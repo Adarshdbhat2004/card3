@@ -3,8 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>4-Player Online Card Game with Voice Chat</title>
-    <!-- PeerJS CDN: Handles peer-to-peer data synchronization and audio stream pipelines -->
+    <title>4-Player Online Card Game Hub</title>
     <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
     <style>
         :root {
@@ -46,13 +45,6 @@
         .btn-red { background: var(--red); color: white; }
         .btn-suit { background: white; color: black; font-size: 24px; padding: 15px 20px; margin: 5px; border-radius: 8px; }
 
-        .link-box {
-            background: rgba(0,0,0,0.4); padding: 12px; border-radius: 8px;
-            border: 1px dashed var(--accent); font-family: monospace;
-            font-size: 13px; max-width: 90%; word-break: break-all; margin: 10px 0;
-            color: #10b981; cursor: pointer;
-        }
-
         #game-container {
             display: none; flex-direction: column; padding: 10px;
             max-width: 650px; margin: 0 auto; box-sizing: border-box;
@@ -69,7 +61,11 @@
 
         .score-row {
             display: flex; justify-content: space-around; align-items: center;
-            font-weight: bold; font-size: 14px;
+            font-weight: bold; font-size: 14px; gap: 10px;
+        }
+        
+        .score-box {
+            background: rgba(0,0,0,0.2); padding: 6px 12px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.05); text-align: center; flex: 1;
         }
 
         .badge {
@@ -77,10 +73,17 @@
             border-radius: 12px; font-size: 12px; font-weight: bold;
         }
 
-        #voice-status {
-            text-align: center; font-size: 12px; color: #a1a1aa; margin-top: 4px;
+        /* VOICE & PUBG CONTROLS */
+        .comm-bar {
+            display: flex; gap: 10px; align-items: center; justify-content: center; margin-top: 8px;
         }
+        .btn-mic {
+            padding: 6px 16px; font-size: 13px; border-radius: 20px; border: none; font-weight: bold; cursor: pointer;
+        }
+        .mic-on { background: var(--green); color: white; }
+        .mic-muted { background: var(--red); color: white; }
 
+        /* TABLE MAT GRID */
         #table-mat {
             display: grid;
             grid-template-areas: 
@@ -133,13 +136,24 @@
             display: none; background: #1e293b; border: 2px solid var(--accent);
             border-radius: 12px; padding: 15px; margin: 10px 0; text-align: center;
         }
-        .modal-view h3 { margin: 0 0 5px 0; font-size: 16px; }
-        .modal-view p { margin: 0 0 12px 0; font-size: 13px; color: #9ca3af; }
+
+        /* CHAT WINDOW INTERFACE */
+        .chat-panel {
+            background: #1e293b; border-radius: 12px; padding: 10px; display: flex; flex-direction: column; gap: 8px; height: 140px; box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+        }
+        .chat-logs {
+            flex: 1; overflow-y: auto; background: rgba(0,0,0,0.2); border-radius: 6px; padding: 6px; font-size: 13px; text-align: left; display: flex; flex-direction: column; gap: 4px;
+        }
+        .chat-input-row {
+            display: flex; gap: 6px;
+        }
+        .chat-input-field {
+            flex: 1; background: #334155; border: 1px solid #475569; border-radius: 6px; color: white; padding: 8px; font-size: 14px;
+        }
     </style>
 </head>
 <body>
 
-<!-- NETWORK ENTRY HUB AND NAME COLLECTOR SCREEN -->
 <div id="lobby-screen">
     <h2>4-Player Team Table Hub</h2>
     <p style="color:#9ca3af; font-size: 14px; margin:-5px 0 15px 0;">Team 1 (Players 1 & 3) &nbsp;vs&nbsp; Team 2 (Players 2 & 4)</p>
@@ -152,27 +166,27 @@
     <div id="lobby-status-lbl" style="font-weight: bold; color: var(--accent); margin-top: 15px;"></div>
 </div>
 
-<!-- LIVE ACTIVE MATCH CONTROLLER INTERFACE -->
 <div id="game-container">
     
-    <!-- DASHBOARD PANEL -->
     <div class="panel">
         <div class="score-row">
-            <div>Team 1: <span id="ui-score-1">0</span></div>
-            <div id="ui-trump-box" style="visibility: hidden;"><span class="badge">TRUMP: <span id="ui-trump-lbl">HIDDEN</span></span></div>
-            <div>Team 2: <span id="ui-score-2">0</span></div>
+            <div class="score-box" id="ui-team1-panel">Team 1: <span id="ui-score-1">0</span></div>
+            <div id="ui-trump-box" style="visibility: hidden; flex: 0 0 auto;"><span class="badge">TRUMP: <span id="ui-trump-lbl">HIDDEN</span></span></div>
+            <div class="score-box" id="ui-team2-panel">Team 2: <span id="ui-score-2">0</span></div>
         </div>
         <hr style="border:0; border-top:1px solid rgba(255,255,255,0.1); margin:8px 0;">
         <div class="score-row" style="font-size:12px; color:#9ca3af;">
             <div id="ui-match-lbl">Match: 1</div>
             <div id="ui-bid-lbl">Target Bid: None</div>
         </div>
-        <div id="voice-status">🎙️ Audio Channel Idle</div>
+        <div class="comm-bar">
+            <button id="btn-mic-toggle" class="btn-mic mic-muted" onclick="toggleMicMuteState()">🎙️ MIC: MUTED</button>
+            <div id="voice-status" style="font-size: 12px; color: #cbd5e1;">Pipeline Idle</div>
+        </div>
         <hr style="border:0; border-top:1px solid rgba(255,255,255,0.1); margin: 8px 0 4px 0;">
         <p id="status-text" class="status-bar">Synchronizing pipelines...</p>
     </div>
 
-    <!-- PLAY ZONE LAYOUT -->
     <div id="table-mat">
         <div class="mat-node" id="node-0"><h4>Player 1</h4><div class="turn-dot">▲ CURRENT TURN</div><div class="card-placeholder" id="mat-card-0"></div></div>
         <div class="mat-node" id="node-1"><h4>Player 2</h4><div class="turn-dot">▲ CURRENT TURN</div><div class="card-placeholder" id="mat-card-1"></div></div>
@@ -180,14 +194,12 @@
         <div class="mat-node" id="node-3"><h4>Player 4</h4><div class="turn-dot">▲ CURRENT TURN</div><div class="card-placeholder" id="mat-card-3"></div></div>
     </div>
 
-    <!-- STAGE 1: FIRST BIDDING PANEL -->
     <div id="modal-bid-1" class="modal-view">
         <h3>First Bidding Round (4 Cards)</h3>
         <p id="bid-1-instruction">Bidding sequence moving...</p>
         <div id="bid-1-buttons"></div>
     </div>
 
-    <!-- STAGE 2: TRUMP SELECTION WINDOW -->
     <div id="modal-trump-select" class="modal-view">
         <h3>Select Trump Suit</h3>
         <p id="trump-select-instruction">Choose the hidden trump card asset:</p>
@@ -197,7 +209,6 @@
         <button class="btn btn-suit" onclick="submitTrumpSuit('♦')" style="color:#dc2626;">♦ Diamonds</button>
     </div>
 
-    <!-- STAGE 3: SECOND BIDDING PANEL -->
     <div id="modal-bid-2" class="modal-view">
         <h3>Second Bidding Round (8 Cards)</h3>
         <p>Choose to override the trump suit to steal lead throw, or pass:</p>
@@ -206,10 +217,19 @@
         <button class="btn btn-red" style="margin:5px;" onclick="submitSecondBid('NO')">No</button>
     </div>
 
-    <!-- USER PLAYER HAND PANEL -->
     <div class="panel" id="hand-panel">
         <h3 style="margin: 0 0 6px 0; font-size: 14px;">Your Hidden Assets (<span id="ui-card-count">0</span> cards)</h3>
         <div id="my-hand" class="hand-flex"></div>
+    </div>
+
+    <div class="chat-panel">
+        <div class="chat-logs" id="chat-box-logs">
+            <div style="color: #9ca3af; font-style: italic;">Welcome to Table Chat Room!</div>
+        </div>
+        <div class="chat-input-row">
+            <input type="text" id="chat-input-msg" class="chat-input-field" placeholder="Type message to table..." onkeydown="if(event.key==='Enter') sendTextChatMessage()">
+            <button class="btn btn-blue" style="padding: 8px 16px; font-size:13px;" onclick="sendTextChatMessage()">Send</button>
+        </div>
     </div>
 
 </div>
@@ -252,6 +272,7 @@ let gameState = {
     
     scoreTeam1: 0, 
     scoreTeam2: 0,
+    soloPlayerTricks: 0, // Keeps record of tricks won specifically by the Single player
     deckRemaining: []
 };
 
@@ -259,7 +280,6 @@ window.addEventListener('DOMContentLoaded', () => {
     const params = new URLSearchParams(window.location.search);
     targetRoomId = params.get('room');
     if (targetRoomId) {
-        // Guest mode setup
         document.getElementById('btn-action').innerText = "Join Table & Connect Voice";
         document.getElementById('btn-action').className = "btn btn-blue";
     }
@@ -285,10 +305,30 @@ function initiateLobbyRole() {
 async function startMicrophonePipeline() {
     try {
         localAudioStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
-        document.getElementById('voice-status').innerText = "🎙️ Voice Audio Pipeline Activated";
+        // Start muted by default like PUBG lobbies
+        localAudioStream.getAudioTracks()[0].enabled = false;
+        document.getElementById('voice-status').innerText = "🎙️ Mic Connected (Muted)";
     } catch (err) {
         console.warn("Microphone access denied:", err);
-        document.getElementById('voice-status').innerText = "🔇 Mic Blocked (Audio Playback Only)";
+        document.getElementById('voice-status').innerText = "🔇 Audio Playback Only";
+        document.getElementById('btn-mic-toggle').style.display = 'none';
+    }
+}
+
+function toggleMicMuteState() {
+    if (!localAudioStream) return;
+    let targetState = !localAudioStream.getAudioTracks()[0].enabled;
+    localAudioStream.getAudioTracks()[0].enabled = targetState;
+    
+    const btn = document.getElementById('btn-mic-toggle');
+    if (targetState) {
+        btn.innerText = "🎙️ MIC: LIVE / OPEN";
+        btn.className = "btn-mic mic-on";
+        document.getElementById('voice-status').innerText = "Voice Channel Transmitting";
+    } else {
+        btn.innerText = "🎙️ MIC: MUTED";
+        btn.className = "btn-mic mic-muted";
+        document.getElementById('voice-status').innerText = "Voice Channel Muted";
     }
 }
 
@@ -331,7 +371,11 @@ function setupHostRoom(hostName) {
 
 function updateHostLobbyUI(link) {
     let connectedNames = gameState.names.filter(n => n !== "");
-    let listHTML = connectedNames.map((name, i) => `<li>Slot ${i+1}: <b>${name}</b></li>`).join('');
+    let listHTML = "";
+    for(let i=0; i<4; i++) {
+        let slotName = gameState.names[i] ? gameState.names[i] : "Empty (Waiting...)";
+        listHTML += `<li>Slot ${i+1}: <b>${slotName}</b></li>`;
+    }
     
     document.getElementById('lobby-status-lbl').innerHTML = `
         <p style='color:white; font-size:14px; margin-bottom:5px;'>Share this link with your team:</p>
@@ -340,7 +384,7 @@ function updateHostLobbyUI(link) {
             <p style="margin:0 0 5px 0; color:var(--accent); font-weight:bold;">Players at the Table (${connectedNames.length}/4):</p>
             <ul style="margin:0; padding-left:20px; font-size:14px;">${listHTML}</ul>
         </div>
-        <p style='color:#a1a1aa; font-size:12px;'>Waiting for 4 players to join before dealing...</p>
+        <p style='color:#a1a1aa; font-size:12px;'>The match will start automatically once all 4 slots are filled!</p>
     `;
 }
 
@@ -390,6 +434,23 @@ function copyLinkText(str) {
     });
 }
 
+function sendTextChatMessage() {
+    const input = document.getElementById('chat-input-msg');
+    let txt = input.value.trim();
+    if(!txt) return;
+    
+    transmitToHost({ type: 'TEXT_CHAT', sender: gameState.names[myPlayerIndex], msg: txt });
+    input.value = "";
+}
+
+function dispatchChatToUI(sender, text) {
+    const box = document.getElementById('chat-box-logs');
+    const msgDiv = document.createElement('div');
+    msgDiv.innerHTML = `<b style="color: var(--accent);">${sender}:</b> <span>${text}</span>`;
+    box.appendChild(msgDiv);
+    box.scrollTop = box.scrollHeight;
+}
+
 function emitGameState() {
     if (!isHost) return;
     connections.forEach(c => c.conn.send({ type: 'SYNC', state: gameState }));
@@ -404,15 +465,21 @@ function transmitToHost(payload) {
 function parseIncomingTraffic(msg, senderIndex) {
     if (msg.type === 'ASSIGN') {
         myPlayerIndex = msg.index;
-        document.getElementById('lobby-status-lbl').innerHTML = `<h3>Joined!</h3><p>Waiting for remaining players to enter names...</p>`;
+        document.getElementById('lobby-status-lbl').innerHTML = `<h3>Joined Successful!</h3><p>Waiting for the remaining players to link their names...</p>`;
     }
     else if (msg.type === 'FULL') {
-        alert("Lobby full.");
+        alert("Lobby layout already full.");
         window.location.href = window.location.pathname;
     }
     else if (msg.type === 'SYNC') {
         gameState = msg.state;
         renderUIFromState();
+    }
+    else if (msg.type === 'TEXT_CHAT') {
+        if(isHost) {
+            connections.forEach(c => c.conn.send(msg));
+        }
+        dispatchChatToUI(msg.sender, msg.msg);
     }
     else if (isHost) {
         if (msg.type === 'JOIN_NAME') {
@@ -446,7 +513,6 @@ function runNewMatchEngine() {
         [deck[i], deck[j]] = [deck[j], deck[i]];
     }
 
-    // Step 1: Give first 4 cards
     for (let i=0; i<4; i++) {
         gameState.hands[i] = deck.splice(0, 4);
     }
@@ -459,6 +525,7 @@ function runNewMatchEngine() {
     gameState.trumpRevealed = false;
     gameState.roundTrickCount = 0;
     gameState.phase2OverrideTriggered = false;
+    gameState.soloPlayerTricks = 0;
     
     gameState.phase = 'BID_1';
     gameState.currentTurnIndex = gameState.opportunityIndex;
@@ -510,6 +577,7 @@ function recordTrumpSuitSelection(suit) {
         gameState.phase = 'BID_2';
         gameState.currentTurnIndex = gameState.opportunityIndex;
     } else {
+        // FIXED FOR SINGLE RUN: The solo player selects the trump card and IMMEDIATELY starts throwing first!
         gameState.phase = 'PLAYING';
         gameState.leadPlayerIndex = gameState.highestBidderIndex;
         gameState.currentTurnIndex = gameState.highestBidderIndex;
@@ -537,7 +605,7 @@ function recordBid2Selection(idx, choice) {
             }
         }
 
-        if (overrideBidderIdx) {
+        if (overrideBidderIdx !== null) {
             gameState.highestBidderIndex = overrideBidderIdx;
             gameState.highestBidValue = overrideVal;
             gameState.phase2OverrideTriggered = true;
@@ -596,6 +664,12 @@ function evaluateTrickWinnerAndScores() {
         }
     }
 
+    // Record the specific player trick wins
+    if (gameState.phase2OverrideTriggered && trickWinnerIdx === gameState.highestBidderIndex) {
+        gameState.soloPlayerTricks++;
+    }
+
+    // Record traditional team totals
     if (trickWinnerIdx === 0 || trickWinnerIdx === 2) gameState.scoreTeam1++;
     if (trickWinnerIdx === 1 || trickWinnerIdx === 3) gameState.scoreTeam2++;
 
@@ -605,14 +679,26 @@ function evaluateTrickWinnerAndScores() {
     if (gameState.roundTrickCount === 8) {
         let targetBid = gameState.highestBidValue;
         let bidderTeam = (gameState.highestBidderIndex === 0 || gameState.highestBidderIndex === 2) ? 1 : 2;
-        let pointsWon = (bidderTeam === 1) ? gameState.scoreTeam1 : gameState.scoreTeam2;
-
+        
         let matchResultText = "";
-        if (pointsWon >= targetBid) {
-            matchResultText = `Match ${gameState.matchNumber} Over: Team ${bidderTeam} reached target bid of ${targetBid} points and WON!`;
+        
+        if(gameState.phase2OverrideTriggered) {
+            // SINGLE SOLO RULE EVALUATION: Must get the exact bidded points completely alone!
+            if(gameState.soloPlayerTricks >= targetBid) {
+                matchResultText = `👑 SOLO MATCH OVER: ${gameState.names[gameState.highestBidderIndex]} made a successful Single run winning ${gameState.soloPlayerTricks} tricks alone! SOLO WINS!`;
+            } else {
+                let opposingTeamId = (bidderTeam === 1) ? 2 : 1;
+                matchResultText = `❌ SOLO MATCH FAILED: ${gameState.names[gameState.highestBidderIndex]} only won ${gameState.soloPlayerTricks} tricks alone. Team ${opposingTeamId} WINS!`;
+            }
         } else {
-            let opposingTeam = (bidderTeam === 1) ? 2 : 1;
-            matchResultText = `Match ${gameState.matchNumber} Over: Team ${bidderTeam} failed bid. Team ${opposingTeam} WINS!`;
+            // Traditional team validation
+            let pointsWon = (bidderTeam === 1) ? gameState.scoreTeam1 : gameState.scoreTeam2;
+            if (pointsWon >= targetBid) {
+                matchResultText = `Match ${gameState.matchNumber} Over: Team ${bidderTeam} reached target bid of ${targetBid} points and WON!`;
+            } else {
+                let opposingTeam = (bidderTeam === 1) ? 2 : 1;
+                matchResultText = `Match ${gameState.matchNumber} Over: Team ${bidderTeam} failed bid. Team ${opposingTeam} WINS!`;
+            }
         }
 
         alert(matchResultText);
@@ -621,8 +707,14 @@ function evaluateTrickWinnerAndScores() {
         emitGameState();
         setTimeout(runNewMatchEngine, 2000);
     } else {
-        gameState.leadPlayerIndex = trickWinnerIdx;
-        gameState.currentTurnIndex = trickWinnerIdx;
+        // FIXED FOR CONTINUOUS RUN: If Single run is triggered, the solo player ALWAYS takes the next lead throw automatically!
+        if (gameState.phase2OverrideTriggered) {
+            gameState.leadPlayerIndex = gameState.highestBidderIndex;
+            gameState.currentTurnIndex = gameState.highestBidderIndex;
+        } else {
+            gameState.leadPlayerIndex = trickWinnerIdx;
+            gameState.currentTurnIndex = trickWinnerIdx;
+        }
         emitGameState();
     }
 }
@@ -636,17 +728,28 @@ function submitSecondBid(choice) { transmitToHost({ type: 'ACTION_BID2', choice:
 function throwLocalCard(idx) { transmitToHost({ type: 'ACTION_PLAY', cardIndex: idx }); }
 
 function renderUIFromState() {
-    if (gameState.phase === 'LOBBY') return; // Stay on name entry panel during sync build
+    if (gameState.phase === 'LOBBY') return; 
 
     document.getElementById('lobby-screen').style.display = 'none';
     document.getElementById('game-container').style.display = 'flex';
 
-    document.getElementById('ui-score-1').innerText = gameState.scoreTeam1;
-    document.getElementById('ui-score-2').innerText = gameState.scoreTeam2;
+    let name1 = gameState.names[0] ? gameState.names[0] : "P1";
+    let name2 = gameState.names[1] ? gameState.names[1] : "P2";
+    let name3 = gameState.names[2] ? gameState.names[2] : "P3";
+    let name4 = gameState.names[3] ? gameState.names[3] : "P4";
+    
+    document.getElementById('ui-team1-panel').innerHTML = `Team 1 (${name1} & ${name3}): <span id="ui-score-1">${gameState.scoreTeam1}</span>`;
+    document.getElementById('ui-team2-panel').innerHTML = `Team 2 (${name2} & ${name4}): <span id="ui-score-2">${gameState.scoreTeam2}</span>`;
+
     document.getElementById('ui-match-lbl').innerText = `Match: ${gameState.matchNumber} (Opportunity: ${gameState.names[gameState.opportunityIndex]})`;
     
-    document.getElementById('ui-bid-lbl').innerText = gameState.highestBidderIndex !== null ? 
-        `Target Bid: ${gameState.highestBidValue} points set by ${gameState.names[gameState.highestBidderIndex]}` : `Target Bid: None`;
+    if (gameState.highestBidderIndex !== null) {
+        let textPrefix = gameState.phase2OverrideTriggered ? "🔥 SOLO RUN: Single" : "Target Bid:";
+        let soloTrickCountText = gameState.phase2OverrideTriggered ? ` (${gameState.soloPlayerTricks} Won Alone)` : "";
+        document.getElementById('ui-bid-lbl').innerText = `${textPrefix} ${gameState.highestBidValue} points set by ${gameState.names[gameState.highestBidderIndex]}${soloTrickCountText}`;
+    } else {
+        document.getElementById('ui-bid-lbl').innerText = `Target Bid: None`;
+    }
 
     const trumpBox = document.getElementById('ui-trump-box');
     const trumpLbl = document.getElementById('ui-trump-lbl');
@@ -676,7 +779,7 @@ function renderUIFromState() {
         if (myPlayerIndex === gameState.currentTurnIndex) {
             document.getElementById('modal-trump-select').style.display = 'block';
             if(gameState.phase2OverrideTriggered) {
-                document.getElementById('trump-select-instruction').innerText = "You triggered a Single Override! Pick the new game Trump suit asset:";
+                document.getElementById('trump-select-instruction').innerText = "You triggered a Single Override! Pick the Solo Trump suit:";
             } else {
                 document.getElementById('trump-select-instruction').innerText = "You won the 4-card round bid! Choose hidden trump:";
             }
