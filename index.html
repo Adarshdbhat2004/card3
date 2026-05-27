@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="kn">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>4-Player Online Card Game Hub</title>
+    <title>4-Player Team Table Hub (Kannada Edition)</title>
     <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
     <style>
         :root {
@@ -82,6 +82,7 @@
         .mic-on { background: var(--green); color: white; }
         .mic-muted { background: var(--red); color: white; }
 
+        /* Clockwise Layout Configuration Matrix */
         #table-mat {
             display: grid;
             grid-template-areas: 
@@ -102,10 +103,10 @@
         .mat-node.active-turn { border: 1px solid var(--accent); background: rgba(251,191,36,0.08); }
         .mat-node.active-turn .turn-dot { display: block; }
 
-        #node-0 { grid-area: slot-0; }
-        #node-1 { grid-area: slot-1; }
-        #node-2 { grid-area: slot-2; }
-        #node-3 { grid-area: slot-3; }
+        #node-0 { grid-area: slot-0; } /* You */
+        #node-1 { grid-area: slot-1; } /* Left Player (Clockwise Next) */
+        #node-2 { grid-area: slot-2; } /* Partner Across */
+        #node-3 { grid-area: slot-3; } /* Right Player */
 
         .card-placeholder {
             width: 65px; height: 95px; border: 2px dashed rgba(255,255,255,0.15);
@@ -208,10 +209,10 @@
 
     <div id="modal-bid-2" class="modal-view">
         <h3>Second Bidding Round (8 Cards)</h3>
-        <p>Choose to override the trump suit to steal lead throw, or pass:</p>
-        <button class="btn btn-blue" style="margin:5px;" onclick="submitSecondBid('6')">Single 6</button>
-        <button class="btn btn-blue" style="margin:5px;" onclick="submitSecondBid('8')">Single 8</button>
-        <button class="btn btn-red" style="margin:5px;" onclick="submitSecondBid('NO')">No</button>
+        <p>Choose to override the trump suit to steal lead throw, or pass (ಮುಂದೆ):</p>
+        <button class="btn btn-blue" style="margin:5px;" onclick="submitSecondBid('6')">ಎತ್ತು (Single 6)</button>
+        <button class="btn btn-blue" style="margin:5px;" onclick="submitSecondBid('8')">ಓಕ್ಕೆ (Single 8)</button>
+        <button class="btn btn-red" style="margin:5px;" onclick="submitSecondBid('NO')">ಮುಂದೆ</button>
     </div>
 
     <div class="panel" id="hand-panel">
@@ -256,6 +257,7 @@ let gameState = {
     bid1Tracker: [], 
     highestBidderIndex: null,
     highestBidValue: 0,
+    highestBidLabel: "", // Tracks localized label for status metrics
     
     bid2Tracker: [], 
     phase2OverrideTriggered: false,
@@ -469,7 +471,7 @@ function parseIncomingTraffic(msg, senderIndex) {
     }
     else if (msg.type === 'TEXT_CHAT') {
         if(isHost) {
-            connections.forEach(c => c.conn.send(msg));
+            connections.forEach(c => { if(c.index !== senderIndex) c.conn.send(msg); });
         }
         dispatchChatToUI(msg.sender, msg.msg);
     }
@@ -493,7 +495,7 @@ function parseIncomingTraffic(msg, senderIndex) {
 }
 
 /* =========================================================================
-   MATCH ENGINE LOGIC
+   MATCH ENGINE LOGIC (CLOCKWISE FLOW FORCED)
 ========================================================================= */
 function runNewMatchEngine() {
     gameState.opportunityIndex = (gameState.matchNumber - 1) % 4;
@@ -535,7 +537,9 @@ function recordBid1Selection(idx, choice) {
     if (gameState.bid1Tracker.length === 4) {
         let highestValue = 0;
         let winnerIdx = gameState.opportunityIndex;
+        let finalLabel = "Pass";
 
+        // Evaluate sequential matching loop clockwise
         let evalSequence = [];
         for (let i=0; i<4; i++) {
             evalSequence.push((gameState.opportunityIndex + i) % 4);
@@ -548,15 +552,18 @@ function recordBid1Selection(idx, choice) {
                 if (val > highestValue) {
                     highestValue = val;
                     winnerIdx = pIdx;
+                    finalLabel = (val === 5) ? "ಎರಡು" : "ಮೂರು";
                 }
             }
         });
 
         gameState.highestBidderIndex = winnerIdx;
         gameState.highestBidValue = highestValue;
+        gameState.highestBidLabel = finalLabel;
         gameState.phase = 'TRUMP_SELECT';
         gameState.currentTurnIndex = winnerIdx;
     } else {
+        // CLOCKWISE TURN PROGRESSION: (idx + 1) % 4
         gameState.currentTurnIndex = (idx + 1) % 4;
     }
     emitGameState();
@@ -586,6 +593,7 @@ function recordBid2Selection(idx, choice) {
     if (gameState.bid2Tracker.length === 4) {
         let overrideBidderIdx = null;
         let overrideVal = 0;
+        let overrideLabel = "";
 
         for (let i=0; i<4; i++) {
             let pIdx = (gameState.opportunityIndex + i) % 4;
@@ -595,6 +603,7 @@ function recordBid2Selection(idx, choice) {
                 if (val > overrideVal) {
                     overrideVal = val;
                     overrideBidderIdx = pIdx;
+                    overrideLabel = (val === 6) ? "ಎತ್ತು (Single 6)" : "ಓಕ್ಕೆ (Single 8)";
                 }
             }
         }
@@ -602,12 +611,14 @@ function recordBid2Selection(idx, choice) {
         if (overrideBidderIdx !== null) {
             gameState.highestBidderIndex = overrideBidderIdx;
             gameState.highestBidValue = overrideVal;
+            gameState.highestBidLabel = overrideLabel;
             gameState.phase2OverrideTriggered = true;
             
             gameState.phase = 'TRUMP_SELECT';
             gameState.currentTurnIndex = overrideBidderIdx;
         } else {
             let originalSelectorIdx = gameState.highestBidderIndex;
+            // Next clockwise player from original bidder gets to lead first throw
             let nextThrowerIdx = (originalSelectorIdx + 1) % 4;
             
             gameState.phase = 'PLAYING';
@@ -615,6 +626,7 @@ function recordBid2Selection(idx, choice) {
             gameState.currentTurnIndex = nextThrowerIdx;
         }
     } else {
+        // CLOCKWISE FLOW CONTINUOUS ROTATION
         gameState.currentTurnIndex = (idx + 1) % 4;
     }
     emitGameState();
@@ -635,6 +647,7 @@ function recordCardThrowAction(idx, cardIdx) {
         emitGameState();
         setTimeout(evaluateTrickWinnerAndScores, 1500);
     } else {
+        // TURN MOVES CLOCKWISE TO NEXT SEAT
         gameState.currentTurnIndex = (idx + 1) % 4;
         emitGameState();
     }
@@ -658,10 +671,9 @@ function evaluateTrickWinnerAndScores() {
         }
     }
 
-    // CRITICAL RULE UPDATE: SUDDEN DEATH BREAK RULE CHECK FOR SINGLE OVERRIDE
+    // SUDDEN DEATH STREAK TRACKING
     if (gameState.phase2OverrideTriggered) {
         if (trickWinnerIdx !== gameState.highestBidderIndex) {
-            // Someone else won the track! The solo runner loses instantly.
             let soloRunnerName = gameState.names[gameState.highestBidderIndex];
             let breakerName = gameState.names[trickWinnerIdx];
             
@@ -689,12 +701,11 @@ function evaluateTrickWinnerAndScores() {
         let matchResultText = "";
         
         if(gameState.phase2OverrideTriggered) {
-            // If they survived all 8 rounds winning continuously
             matchResultText = `👑 PERFECT CONTINUOUS RUN: ${gameState.names[gameState.highestBidderIndex]} successfully won all tracks in a continuous streak alone! MATCH VICTOR!`;
         } else {
             let pointsWon = (bidderTeam === 1) ? gameState.scoreTeam1 : gameState.scoreTeam2;
             if (pointsWon >= targetBid) {
-                matchResultText = `Match ${gameState.matchNumber} Over: Team ${bidderTeam} reached target bid of ${targetBid} points and WON!`;
+                matchResultText = `Match ${gameState.matchNumber} Over: Team ${bidderTeam} reached target bid value and WON!`;
             } else {
                 let opposingTeam = (bidderTeam === 1) ? 2 : 1;
                 matchResultText = `Match ${gameState.matchNumber} Over: Team ${bidderTeam} failed bid. Team ${opposingTeam} WINS!`;
@@ -707,7 +718,7 @@ function evaluateTrickWinnerAndScores() {
         emitGameState();
         setTimeout(runNewMatchEngine, 2000);
     } else {
-        // Winner leads next track as usual (for the solo runner, they must continue winning to keep leading)
+        // Trick winner leads the next trick
         gameState.leadPlayerIndex = trickWinnerIdx;
         gameState.currentTurnIndex = trickWinnerIdx;
         emitGameState();
@@ -739,9 +750,9 @@ function renderUIFromState() {
     document.getElementById('ui-match-lbl').innerText = `Match: ${gameState.matchNumber} (Opportunity: ${gameState.names[gameState.opportunityIndex]})`;
     
     if (gameState.highestBidderIndex !== null) {
-        let textPrefix = gameState.phase2OverrideTriggered ? "🔥 STREAK RUN: Single" : "Target Bid:";
-        let soloTrickCountText = gameState.phase2OverrideTriggered ? ` (${gameState.soloPlayerTricks} Continuous Streak)` : "";
-        document.getElementById('ui-bid-lbl').innerText = `${textPrefix} ${gameState.highestBidValue} points set by ${gameState.names[gameState.highestBidderIndex]}${soloTrickCountText}`;
+        let textPrefix = gameState.phase2OverrideTriggered ? "🔥 STREAK RUN:" : "Target Bid:";
+        let soloTrickCountText = gameState.phase2OverrideTriggered ? ` (${gameState.soloPlayerTricks} Tracks Won)` : "";
+        document.getElementById('ui-bid-lbl').innerText = `${textPrefix} ${gameState.highestBidLabel} set by ${gameState.names[gameState.highestBidderIndex]}${soloTrickCountText}`;
     } else {
         document.getElementById('ui-bid-lbl').innerText = `Target Bid: None`;
     }
@@ -801,14 +812,14 @@ function setupBid1ButtonsHTML() {
     if (myPlayerIndex === gameState.opportunityIndex) {
         instruction.innerText = "You are the Opportunity Player. You must open with a bid value:";
         container.innerHTML = `
-            <button class="btn btn-blue" style="margin:5px;" onclick="submitFirstRoundBid('5')">Bid 5</button>
-            <button class="btn btn-blue" style="margin:5px;" onclick="submitFirstRoundBid('6')">Bid 6</button>
+            <button class="btn btn-blue" style="margin:5px;" onclick="submitFirstRoundBid('5')">ಎರಡು (Bid 5)</button>
+            <button class="btn btn-blue" style="margin:5px;" onclick="submitFirstRoundBid('6')">ಮೂರು (Bid 6)</button>
         `;
     } else {
         instruction.innerText = "Choose to overbid or pass:";
         container.innerHTML = `
-            <button class="btn btn-blue" style="margin:5px;" onclick="submitFirstRoundBid('6')">Bid 6</button>
-            <button class="btn btn-red" style="margin:5px;" onclick="submitFirstRoundBid('NO')">No Bid</button>
+            <button class="btn btn-blue" style="margin:5px;" onclick="submitFirstRoundBid('6')">ಮೂರು (Bid 6)</button>
+            <button class="btn btn-red" style="margin:5px;" onclick="submitFirstRoundBid('NO')">ಮುಂದೆ</button>
         `;
     }
 }
@@ -844,6 +855,7 @@ function renderLocalHandMatrix() {
 }
 
 function renderMatPositions() {
+    // Clockwise rendering offset map layout relative to local screen client perspective
     for (let i = 0; i < 4; i++) {
         let logicalIndex = (myPlayerIndex + i) % 4; 
         
