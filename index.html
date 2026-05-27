@@ -73,7 +73,6 @@
             border-radius: 12px; font-size: 12px; font-weight: bold;
         }
 
-        /* VOICE & PUBG CONTROLS */
         .comm-bar {
             display: flex; gap: 10px; align-items: center; justify-content: center; margin-top: 8px;
         }
@@ -83,7 +82,6 @@
         .mic-on { background: var(--green); color: white; }
         .mic-muted { background: var(--red); color: white; }
 
-        /* TABLE MAT GRID */
         #table-mat {
             display: grid;
             grid-template-areas: 
@@ -137,9 +135,8 @@
             border-radius: 12px; padding: 15px; margin: 10px 0; text-align: center;
         }
 
-        /* CHAT WINDOW INTERFACE */
         .chat-panel {
-            background: #1e293b; border-radius: 12px; padding: 10px; display: flex; flex-direction: column; gap: 8px; height: 140px; box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+            background: #1e293b; border-radius: 12px; padding: 10px; display: flex; flex-direction: column; gap: 8px; height: 140px; box-shadow: 0 4px 10px rgba(0,0,0,0.3); margin-top: 10px;
         }
         .chat-logs {
             flex: 1; overflow-y: auto; background: rgba(0,0,0,0.2); border-radius: 6px; padding: 6px; font-size: 13px; text-align: left; display: flex; flex-direction: column; gap: 4px;
@@ -235,9 +232,6 @@
 </div>
 
 <script>
-/* =========================================================================
-   P2P SYNCED SERVERLESS MULTIPLAYER AND REALTIME VOICE SYSTEM
-========================================================================= */
 let peer = null;
 let connections = [];
 let localAudioStream = null;
@@ -272,7 +266,7 @@ let gameState = {
     
     scoreTeam1: 0, 
     scoreTeam2: 0,
-    soloPlayerTricks: 0, // Keeps record of tricks won specifically by the Single player
+    soloPlayerTricks: 0,
     deckRemaining: []
 };
 
@@ -291,7 +285,6 @@ function initiateLobbyRole() {
         alert("Please enter your real name before connecting!");
         return;
     }
-    
     document.getElementById('player-name-input').disabled = true;
     document.getElementById('btn-action').disabled = true;
 
@@ -305,7 +298,6 @@ function initiateLobbyRole() {
 async function startMicrophonePipeline() {
     try {
         localAudioStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
-        // Start muted by default like PUBG lobbies
         localAudioStream.getAudioTracks()[0].enabled = false;
         document.getElementById('voice-status').innerText = "🎙️ Mic Connected (Muted)";
     } catch (err) {
@@ -501,7 +493,7 @@ function parseIncomingTraffic(msg, senderIndex) {
 }
 
 /* =========================================================================
-   STRICT SYSTEM RULES MATCH LOGIC PIPELINE
+   MATCH ENGINE LOGIC
 ========================================================================= */
 function runNewMatchEngine() {
     gameState.opportunityIndex = (gameState.matchNumber - 1) % 4;
@@ -525,6 +517,9 @@ function runNewMatchEngine() {
     gameState.trumpRevealed = false;
     gameState.roundTrickCount = 0;
     gameState.phase2OverrideTriggered = false;
+    
+    gameState.scoreTeam1 = 0;
+    gameState.scoreTeam2 = 0;
     gameState.soloPlayerTricks = 0;
     
     gameState.phase = 'BID_1';
@@ -577,7 +572,6 @@ function recordTrumpSuitSelection(suit) {
         gameState.phase = 'BID_2';
         gameState.currentTurnIndex = gameState.opportunityIndex;
     } else {
-        // FIXED FOR SINGLE RUN: The solo player selects the trump card and IMMEDIATELY starts throwing first!
         gameState.phase = 'PLAYING';
         gameState.leadPlayerIndex = gameState.highestBidderIndex;
         gameState.currentTurnIndex = gameState.highestBidderIndex;
@@ -664,12 +658,25 @@ function evaluateTrickWinnerAndScores() {
         }
     }
 
-    // Record the specific player trick wins
-    if (gameState.phase2OverrideTriggered && trickWinnerIdx === gameState.highestBidderIndex) {
-        gameState.soloPlayerTricks++;
+    // CRITICAL RULE UPDATE: SUDDEN DEATH BREAK RULE CHECK FOR SINGLE OVERRIDE
+    if (gameState.phase2OverrideTriggered) {
+        if (trickWinnerIdx !== gameState.highestBidderIndex) {
+            // Someone else won the track! The solo runner loses instantly.
+            let soloRunnerName = gameState.names[gameState.highestBidderIndex];
+            let breakerName = gameState.names[trickWinnerIdx];
+            
+            alert(`❌ SINGLE RUN BROKEN: ${breakerName} won the track! ${soloRunnerName} failed the continuous streak run. MATCH LOST INSTANTLY!`);
+            
+            gameState.matchNumber++;
+            gameState.phase = 'END';
+            emitGameState();
+            setTimeout(runNewMatchEngine, 2000);
+            return;
+        } else {
+            gameState.soloPlayerTricks++;
+        }
     }
 
-    // Record traditional team totals
     if (trickWinnerIdx === 0 || trickWinnerIdx === 2) gameState.scoreTeam1++;
     if (trickWinnerIdx === 1 || trickWinnerIdx === 3) gameState.scoreTeam2++;
 
@@ -679,19 +686,12 @@ function evaluateTrickWinnerAndScores() {
     if (gameState.roundTrickCount === 8) {
         let targetBid = gameState.highestBidValue;
         let bidderTeam = (gameState.highestBidderIndex === 0 || gameState.highestBidderIndex === 2) ? 1 : 2;
-        
         let matchResultText = "";
         
         if(gameState.phase2OverrideTriggered) {
-            // SINGLE SOLO RULE EVALUATION: Must get the exact bidded points completely alone!
-            if(gameState.soloPlayerTricks >= targetBid) {
-                matchResultText = `👑 SOLO MATCH OVER: ${gameState.names[gameState.highestBidderIndex]} made a successful Single run winning ${gameState.soloPlayerTricks} tricks alone! SOLO WINS!`;
-            } else {
-                let opposingTeamId = (bidderTeam === 1) ? 2 : 1;
-                matchResultText = `❌ SOLO MATCH FAILED: ${gameState.names[gameState.highestBidderIndex]} only won ${gameState.soloPlayerTricks} tricks alone. Team ${opposingTeamId} WINS!`;
-            }
+            // If they survived all 8 rounds winning continuously
+            matchResultText = `👑 PERFECT CONTINUOUS RUN: ${gameState.names[gameState.highestBidderIndex]} successfully won all tracks in a continuous streak alone! MATCH VICTOR!`;
         } else {
-            // Traditional team validation
             let pointsWon = (bidderTeam === 1) ? gameState.scoreTeam1 : gameState.scoreTeam2;
             if (pointsWon >= targetBid) {
                 matchResultText = `Match ${gameState.matchNumber} Over: Team ${bidderTeam} reached target bid of ${targetBid} points and WON!`;
@@ -707,20 +707,15 @@ function evaluateTrickWinnerAndScores() {
         emitGameState();
         setTimeout(runNewMatchEngine, 2000);
     } else {
-        // FIXED FOR CONTINUOUS RUN: If Single run is triggered, the solo player ALWAYS takes the next lead throw automatically!
-        if (gameState.phase2OverrideTriggered) {
-            gameState.leadPlayerIndex = gameState.highestBidderIndex;
-            gameState.currentTurnIndex = gameState.highestBidderIndex;
-        } else {
-            gameState.leadPlayerIndex = trickWinnerIdx;
-            gameState.currentTurnIndex = trickWinnerIdx;
-        }
+        // Winner leads next track as usual (for the solo runner, they must continue winning to keep leading)
+        gameState.leadPlayerIndex = trickWinnerIdx;
+        gameState.currentTurnIndex = trickWinnerIdx;
         emitGameState();
     }
 }
 
 /* =========================================================================
-   UI DISPLAY RECONSTRUCTION SYNC LAYER WITH SITTING ROTATIONS
+   UI DISPLAY LAYER
 ========================================================================= */
 function submitFirstRoundBid(choice) { transmitToHost({ type: 'ACTION_BID1', choice: choice }); }
 function submitTrumpSuit(suit) { transmitToHost({ type: 'ACTION_TRUMP', suit: suit }); }
@@ -744,8 +739,8 @@ function renderUIFromState() {
     document.getElementById('ui-match-lbl').innerText = `Match: ${gameState.matchNumber} (Opportunity: ${gameState.names[gameState.opportunityIndex]})`;
     
     if (gameState.highestBidderIndex !== null) {
-        let textPrefix = gameState.phase2OverrideTriggered ? "🔥 SOLO RUN: Single" : "Target Bid:";
-        let soloTrickCountText = gameState.phase2OverrideTriggered ? ` (${gameState.soloPlayerTricks} Won Alone)` : "";
+        let textPrefix = gameState.phase2OverrideTriggered ? "🔥 STREAK RUN: Single" : "Target Bid:";
+        let soloTrickCountText = gameState.phase2OverrideTriggered ? ` (${gameState.soloPlayerTricks} Continuous Streak)` : "";
         document.getElementById('ui-bid-lbl').innerText = `${textPrefix} ${gameState.highestBidValue} points set by ${gameState.names[gameState.highestBidderIndex]}${soloTrickCountText}`;
     } else {
         document.getElementById('ui-bid-lbl').innerText = `Target Bid: None`;
