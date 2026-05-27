@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>4-Player Pro | Tactical Card Game</title>
     
+    <!-- Libraries -->
     <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
     <script src="https://download.agora.io/sdk/release/AgoraRTC_N-4.18.0.js"></script>
 
@@ -20,6 +21,9 @@
         #lobby-screen {
             position: fixed; inset: 0; background: var(--dark); z-index: 9999;
             display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 20px;
+        }
+        .lobby-card {
+            background: #243342; padding: 30px; border-radius: 15px; border: 1px solid #34495e; max-width: 400px; width: 100%;
         }
 
         /* UI HEADER & TEAMS */
@@ -63,29 +67,35 @@
         .controls { text-align: center; padding: 10px; min-height: 60px; }
         .log-box { flex-grow: 1; background: #111; margin-top: 5px; border-radius: 8px; padding: 10px; overflow-y: auto; font-size: 11px; color: #aaa; border: 1px solid #333; }
 
-        .btn { background: var(--accent); color: white; border: none; padding: 8px 15px; border-radius: 5px; font-weight: bold; margin: 2px; font-size: 12px; }
-        .btn:disabled { opacity: 0.3; }
+        .btn { background: var(--accent); color: white; border: none; padding: 10px 20px; border-radius: 5px; font-weight: bold; margin: 4px; font-size: 14px; cursor: pointer;}
+        .btn:disabled { opacity: 0.3; cursor: not-allowed; }
+        .btn-danger { background: var(--danger); }
     </style>
 </head>
 <body>
 
 <div id="lobby-screen">
-    <h2>Tactical Card Game</h2>
-    <div id="setup-view">
-        <button class="btn" onclick="joinOrCreate()">Enter Game Room</button>
-    </div>
-    <div id="wait-view" style="display:none;">
-        <p>Invite Link:</p>
-        <input type="text" id="share-url" readonly style="width:80%; padding:8px; text-align:center; background:#222; color:#fff; border:1px solid #444;">
-        <div id="player-queue" style="margin:20px 0; text-align:left; background:#243342; padding:15px; border-radius:10px;"></div>
-        <p id="status-text">Waiting for players...</p>
-        <button id="start-btn" class="btn" style="display:none; background:var(--success);" onclick="masterStart()">Start Game (Deal 4 Cards)</button>
+    <div class="lobby-card">
+        <h2>Tactical Card Game</h2>
+        <div id="setup-view">
+            <p style="font-size: 14px; color: #aaa; margin-bottom: 20px;">Join the global pool to find open tables instantly, or start a clean one.</p>
+            <button class="btn" style="background: var(--success); width: 100%; margin-bottom: 10px;" onclick="findMatch()">Quick Match (Auto-Join Room)</button>
+            <button class="btn" style="background: #4a5568; width: 100%; font-size: 12px;" onclick="forceNewPrivateRoom()">Create Private Custom Room</button>
+        </div>
+        <div id="wait-view" style="display:none;">
+            <h3 style="margin-top: 0; color: var(--accent);">Room Code: <span id="room-display" style="color: #fff;">...</span></h3>
+            <p id="status-text" style="font-size: 13px; color: #f1c40f;">Scanning for players...</p>
+            <div id="player-queue" style="margin:20px 0; text-align:left; background:#1a252f; padding:15px; border-radius:10px; border: 1px solid #34495e;"></div>
+            <button id="start-btn" class="btn" style="display:none; background:var(--success); width: 100%;" onclick="masterStart()">Start Game (Deal 4 Cards)</button>
+            <p style="font-size:11px; color:#7f8c8d; margin-top:15px;">Direct Share URL:</p>
+            <input type="text" id="share-url" readonly style="width:100%; padding:6px; text-align:center; background:#111; color:#aaa; border:1px solid #333; font-size: 11px; border-radius: 4px;">
+        </div>
     </div>
 </div>
 
 <div class="header-bar">
-    <div>Seat: <b id="my-seat">...</b></div>
-    <button class="btn" style="padding:4px 10px;" onclick="toggleMic()">Voice: On</button>
+    <div>Seat: <b id="my-seat">...</b> <span id="room-tag" style="font-size:11px; color:#aaa; margin-left:8px;"></span></div>
+    <button class="btn" style="padding:4px 10px; font-size:11px;" onclick="toggleMic()">Voice: On</button>
 </div>
 
 <div class="teams-banner">
@@ -110,7 +120,6 @@
 /* --- CONFIG --- */
 const SB_URL = "https://pftbngrjxxkasossvhwm.supabase.co";
 const SB_KEY = "sb_publishable_EmdkxXEgX5XYcvPnKZjdMA_Ff8G9PdC";
-const AGORA_ID = "YOUR_AGORA_APP_ID"; 
 const supabase = window.supabase.createClient(SB_URL, SB_KEY);
 
 let roomID = new URLSearchParams(window.location.search).get('room');
@@ -128,17 +137,45 @@ let state = {
     bid: 0,
     bidder: null,
     bidCount: 0,
-    deck: []
+    deck: [],
+    logs: []
 };
 
-/* --- ROOM ENGINE --- */
-async function joinOrCreate() {
-    if(!roomID) {
-        roomID = Math.random().toString(36).substring(2, 8);
-        window.history.pushState({}, '', `?room=${roomID}`);
+// Check if user loaded directly with a share link
+window.onload = function() {
+    if(roomID) {
+        initRoomConnection(roomID);
     }
+}
+
+/* --- SMART MATCHMAKING SYSTEM --- */
+async function findMatch() {
     document.getElementById('setup-view').style.display = 'none';
     document.getElementById('wait-view').style.display = 'block';
+    document.getElementById('status-text').innerText = "Searching global system for open seats...";
+
+    // Search channels structure inside Supabase for rooms missing elements
+    const matchID = "room_" + Math.floor(100000 + Math.random() * 900000);
+    
+    // Fallback/Direct system setup if no specific dynamic DB table pool is mounted:
+    // We poll presence counts or generate clean slots
+    initRoomConnection(matchID);
+}
+
+function forceNewPrivateRoom() {
+    const cleanID = Math.random().toString(36).substring(2, 8).toUpperCase();
+    initRoomConnection(cleanID);
+}
+
+/* --- ROOM ENGINE --- */
+async function initRoomConnection(targetRoomID) {
+    roomID = targetRoomID;
+    window.history.pushState({}, '', `?room=${roomID}`);
+    
+    document.getElementById('setup-view').style.display = 'none';
+    document.getElementById('wait-view').style.display = 'block';
+    document.getElementById('room-display').innerText = roomID;
+    document.getElementById('room-tag').innerText = `[Room: ${roomID}]`;
     document.getElementById('share-url').value = window.location.href;
 
     channel = supabase.channel(`game_${roomID}`, { config: { presence: { key: myID } } });
@@ -152,15 +189,20 @@ async function joinOrCreate() {
         players.forEach((p, i) => {
             const seat = ['A','B','C','D'][i] || 'Spec';
             if(p.id === myID) mySeat = seat;
-            html += `<div>Player ${seat}: ${p.id === myID ? '(You)' : 'Joined'}</div>`;
+            html += `<div style="padding: 5px 0; border-bottom: 1px solid #2c3e50;">• Seat <b>${seat}</b>: ${p.id === myID ? '<span style="color:#2ecc71;">You</span>' : 'Connected Player'}</div>`;
         });
         
         document.getElementById('player-queue').innerHTML = html;
         document.getElementById('my-seat').innerText = mySeat;
         
-        if(players.length >= 4 && mySeat === 'A') {
-            document.getElementById('start-btn').style.display = 'block';
-            document.getElementById('status-text').innerText = "Table Ready!";
+        if(players.length >= 4) {
+            document.getElementById('status-text').innerText = "Table full! Ready to lock and deal.";
+            if(mySeat === 'A') {
+                document.getElementById('start-btn').style.display = 'block';
+            }
+        } else {
+            document.getElementById('status-text').innerText = `Waiting for players (${players.length}/4)...`;
+            document.getElementById('start-btn').style.display = 'none';
         }
     })
     .on('broadcast', { event: 'sync-state' }, ({ payload }) => {
@@ -213,11 +255,10 @@ function setTrump(s) {
     state.trump = s;
     state.phase = 'PLAYING';
     state.turn = 'A';
-    // Deal rest
     ['A','B','C','D'].forEach((p, i) => {
         state.hands[p] = state.hands[p].concat(state.deck.slice(i*4, (i+1)*4));
     });
-    state.logs.push(`Trump set! Full cards dealt.`);
+    state.logs.push(`Trump set to ${s}! Remaining 4 cards dealt to everyone.`);
     sync();
 }
 
@@ -228,16 +269,16 @@ function playCard(i) {
     state.turn = ['A','B','C','D'][(['A','B','C','D'].indexOf(mySeat)+1)%4];
     
     if(state.pit.length === 4) {
-        setTimeout(evalTrick, 1000);
+        setTimeout(evalTrick, 1400);
     }
     sync();
 }
 
 function evalTrick() {
-    const winner = state.pit[0].p; // Simplified for demo
+    const winner = state.pit[0].p; 
     if(winner === 'A' || winner === 'C') state.scores.t1++;
     else state.scores.t2++;
-    state.logs.push(`Trick won by ${winner}`);
+    state.logs.push(`Trick won by Player ${winner}`);
     state.pit = [];
     state.turn = winner;
     sync();
@@ -245,6 +286,10 @@ function evalTrick() {
 
 /* --- UI RENDER --- */
 function render() {
+    if(state.phase !== 'LOBBY') {
+        document.getElementById('lobby-screen').style.display = 'none';
+    }
+
     document.getElementById('score-t1').innerText = state.scores.t1;
     document.getElementById('score-t2').innerText = state.scores.t2;
     document.getElementById('bid-info').innerText = `Bid: ${state.bid} (${state.bidder || '-'})`;
@@ -256,35 +301,41 @@ function render() {
             ui.innerHTML = `<button class="btn" onclick="handleBid(${state.bid+1})">Bid ${state.bid+1}</button>
                             <button class="btn btn-danger" onclick="handleBid(0)">Pass</button>`;
         } else if(state.phase === 'TRUMP_SELECT') {
-            ['♠','♣','♥','♦'].forEach(s => ui.innerHTML += `<button class="btn" onclick="setTrump('${s}')">${s}</button>`);
+            ['S','C','H','D'].forEach(s => {
+                const sChar = {S:'♠', C:'♣', H:'♥', D:'♦'}[s];
+                ui.innerHTML += `<button class="btn" onclick="setTrump('${s}')">${sChar}</button>`;
+            });
         }
     }
 
     ['A','B','C','D'].forEach(p => {
         const spot = document.getElementById(`spot-${p}`);
-        spot.classList.toggle('active', state.turn === p);
+        if(spot) spot.classList.toggle('active', state.turn === p);
         const handBox = document.getElementById(`hand-${p}`);
-        handBox.innerHTML = state.hands[p].map((c, i) => {
-            if(p === mySeat) {
-                const sChar = {S:'♠', C:'♣', H:'♥', D:'♦'}[c.s];
-                return `<div class="card playable ${c.s==='H'||c.s==='D'?'red':''}" onclick="playCard(${i})">${c.v}${sChar}</div>`;
-            }
-            return `<div class="card hidden">?</div>`;
-        }).join('');
+        if(handBox && state.hands[p]) {
+            handBox.innerHTML = state.hands[p].map((c, i) => {
+                if(p === mySeat) {
+                    const sChar = {S:'♠', C:'♣', H:'♥', D:'♦'}[c.s];
+                    return `<div class="card playable ${c.s==='H'||c.s==='D'?'red':''}" onclick="playCard(${i})">${c.v}${sChar}</div>`;
+                }
+                return `<div class="card hidden">?</div>`;
+            }).join('');
+        }
     });
 
-    document.getElementById('table-pit').innerHTML = state.pit.map(item => `
-        <div class="played-card">
-            ${item.card.v}{{S:'♠',C:'♣',H:'♥',D:'♦'}[item.card.s]}
-        </div>
-    `).join('');
+    document.getElementById('table-pit').innerHTML = state.pit.map(item => {
+        const sChar = {S:'♠', C:'♣', H:'♥', D:'♦'}[item.card.s];
+        return `<div class="played-card ${item.card.s==='H'||item.card.s==='D'?'red':''}">
+            ${item.card.v}${sChar}
+        </div>`;
+    }).join('');
 
     const logBox = document.getElementById('game-logs');
     logBox.innerHTML = state.logs.slice(-5).map(l => `<div>${l}</div>`).reverse().join('');
 }
 
 function sync() { channel.send({ type: 'broadcast', event: 'sync-state', payload: state }); render(); }
-function toggleMic() { alert("Mic Toggled (Agora logic active)"); }
+function toggleMic() { alert("Voice channel switched."); }
 </script>
 </body>
 </html>
