@@ -3,94 +3,105 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>4-Player Pro Matchmaker</title>
+    <title>Tactical Card Game | Direct Join</title>
     
     <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
 
     <style>
         :root { --primary: #2c3e50; --accent: #3498db; --success: #2ecc71; --danger: #e74c3c; --dark: #1a252f; }
-        * { box-sizing: border-box; font-family: sans-serif; touch-action: manipulation; }
+        * { box-sizing: border-box; font-family: 'Segoe UI', sans-serif; touch-action: manipulation; }
         body { background: var(--dark); color: white; margin: 0; padding: 5px; height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
         
-        /* LOBBY */
+        /* LOBBY SYSTEM */
         #lobby { position: fixed; inset: 0; background: var(--dark); z-index: 999; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 20px; }
-        .box { background: #243342; padding: 25px; border-radius: 15px; width: 100%; max-width: 350px; border: 1px solid #34495e; text-align: center; }
+        .setup-box { background: #243342; padding: 30px; border-radius: 15px; width: 100%; max-width: 380px; border: 1px solid #34495e; text-align: center; }
         
-        /* TEAMS */
-        .header { display: flex; justify-content: space-between; background: #2c3e50; padding: 10px; border-radius: 8px; margin-bottom: 5px; font-size: 12px; }
-        .score { font-size: 18px; font-weight: bold; color: var(--success); }
+        /* TEAMS BAR */
+        .header-stats { display: flex; justify-content: space-between; align-items: center; background: #2c3e50; padding: 12px; border-radius: 10px; margin-bottom: 5px; border: 1px solid #34495e; }
+        .team-box { text-align: center; }
+        .score { font-size: 20px; font-weight: bold; color: var(--success); display: block; }
+        .team-tag { font-size: 10px; color: #5dade2; text-transform: uppercase; letter-spacing: 1px; }
 
-        /* TABLE */
-        .table { 
-            position: relative; width: 100%; height: 320px; background: #1e2b37; border: 3px solid #34495e; border-radius: 50%; 
+        /* THE ARENA */
+        .arena { 
+            position: relative; width: 100%; max-width: 400px; height: 350px; 
+            background: radial-gradient(circle, #2c3e50 0%, #1a252f 100%); 
+            border: 4px solid #34495e; border-radius: 50%; 
             margin: 10px auto; display: grid; 
             grid-template-areas: ". pA ." "pD pit pB" ". pC .";
-            grid-template-rows: 90px 1fr 90px; grid-template-columns: 80px 1fr 80px;
+            grid-template-rows: 100px 1fr 100px; grid-template-columns: 90px 1fr 90px;
             align-items: center; justify-items: center;
         }
         .spot { display: flex; flex-direction: column; align-items: center; width: 100%; }
         #spot-A { grid-area: pA; } #spot-B { grid-area: pB; } #spot-C { grid-area: pC; } #spot-D { grid-area: pD; }
         
-        .label { font-size: 10px; background: #34495e; padding: 2px 6px; border-radius: 5px; margin-bottom: 3px; }
-        .active .label { background: var(--accent); }
+        .name-label { font-size: 11px; font-weight: bold; background: #34495e; padding: 3px 10px; border-radius: 12px; margin-bottom: 5px; border: 1px solid #455a64; }
+        .active .name-label { background: var(--accent); box-shadow: 0 0 15px var(--accent); }
 
-        .hand { display: flex; flex-wrap: wrap; justify-content: center; gap: 2px; }
-        .card { width: 26px; height: 38px; background: white; color: black; border-radius: 3px; display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: bold; border: 1px solid #999; }
+        .hand { display: flex; flex-wrap: wrap; justify-content: center; gap: 3px; }
+        .card { 
+            width: 30px; height: 44px; background: white; color: black; border-radius: 4px; 
+            display: flex; align-items: center; justify-content: center; 
+            font-size: 12px; font-weight: bold; border: 1px solid #999; box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+        }
         .card.red { color: var(--danger); }
-        .card.playable { cursor: pointer; border: 2px solid var(--accent); }
-        .card.back { background: #34495e; color: transparent; }
+        .card.playable { cursor: pointer; border: 2px solid var(--accent); transform: translateY(-5px); }
+        .card.back { background: #34495e; color: transparent; border: 1px solid #1a252f; }
 
-        .pit { grid-area: pit; display: flex; justify-content: center; align-items: center; gap: 5px; }
+        .pit { grid-area: pit; display: flex; justify-content: center; align-items: center; gap: 8px; }
+        .pit-card { width: 38px; height: 54px; background: white; border-radius: 5px; color: black; display: flex; align-items: center; justify-content: center; font-weight: bold; box-shadow: 0 4px 8px rgba(0,0,0,0.5); }
 
-        .controls { text-align: center; padding: 10px; min-height: 50px; }
-        .logs { flex-grow: 1; background: #000; padding: 8px; font-size: 11px; overflow-y: auto; color: #aaa; border-radius: 5px; }
-        .btn { background: var(--accent); color: white; border: none; padding: 10px 15px; border-radius: 5px; font-weight: bold; margin: 3px; }
+        /* BOTTOM UI */
+        .action-area { text-align: center; padding: 10px; min-height: 60px; }
+        .log-stream { flex-grow: 1; background: #000; padding: 10px; font-size: 12px; overflow-y: auto; color: #888; border-radius: 8px; border: 1px solid #222; }
+        .btn { background: var(--accent); color: white; border: none; padding: 12px 20px; border-radius: 6px; font-weight: bold; margin: 4px; cursor: pointer; }
+        .btn-success { background: var(--success); }
     </style>
 </head>
 <body>
 
 <div id="lobby">
-    <div class="box">
-        <h2>Card Game</h2>
-        <div id="join-controls">
-            <button class="btn" style="width:100%" onclick="joinRoom('PUBLIC_1')">Join Public Table</button>
-            <p style="font-size:11px; color:#7f8c8d; margin:15px 0;">- OR -</p>
-            <input type="text" id="custom-room" placeholder="Enter Room Name" style="width:100%; padding:8px; margin-bottom:10px;">
-            <button class="btn" style="width:100%; background:#4a5568;" onclick="joinRoom(document.getElementById('custom-room').value)">Create/Join Private</button>
+    <div class="setup-box">
+        <h2 style="margin-top:0">Card Table</h2>
+        <div id="room-init">
+            <p style="color:#aaa; font-size:14px;">Enter a Room Name to create a link for your friends.</p>
+            <input type="text" id="room-input" placeholder="e.g. MyPrivateTable" style="width:100%; padding:12px; border-radius:6px; border:none; margin-bottom:15px; text-align:center; font-size:16px;">
+            <button class="btn" style="width:100%" onclick="setRoomFromInput()">Create & Copy Link</button>
         </div>
-        <div id="waiting" style="display:none;">
-            <h3 id="room-id-tag"></h3>
-            <p id="wait-status">Waiting for players...</p>
-            <div id="player-list" style="text-align:left; font-size:13px; margin:15px 0;"></div>
-            <button id="start-btn" class="btn" style="display:none; background:var(--success); width:100%;" onclick="gameInit()">Deal 4 Cards & Start</button>
+        <div id="room-wait" style="display:none;">
+            <h3 id="display-room-id" style="color:var(--accent); margin:0;"></h3>
+            <p id="wait-msg" style="color:#f1c40f; font-size:14px;">Waiting for 4 players to join...</p>
+            <div id="p-list" style="text-align:left; background:#1a252f; padding:15px; border-radius:8px; margin:15px 0; border:1px solid #34495e;"></div>
+            <button id="start-btn" class="btn btn-success" style="display:none; width:100%" onclick="dealInitialCards()">Start Match (Deal 4)</button>
         </div>
     </div>
 </div>
 
-<div class="header">
-    <div>TEAM A+C: <span class="score" id="s1">0</span></div>
-    <div id="trump-display">TRUMP: ?</div>
-    <div>TEAM B+D: <span class="score" id="s2">0</span></div>
+<div class="header-stats">
+    <div class="team-box"><span class="team-tag">Team A+C</span><span class="score" id="score1">0</span></div>
+    <div id="game-info" style="text-align:center; font-size:11px; background:#111; padding:5px 10px; border-radius:5px;">Bid: -<br>Trump: ?</div>
+    <div class="team-box"><span class="team-tag" style="color:#f39c12">Team B+D</span><span class="score" id="score2">0</span></div>
 </div>
 
-<div class="controls" id="ui"></div>
+<div class="action-area" id="ui-controls"></div>
 
-<div class="table">
-    <div class="spot" id="spot-A"><div class="label">Player A</div><div id="h-A" class="hand"></div></div>
-    <div class="spot" id="spot-B"><div class="label">Player B</div><div id="h-B" class="hand"></div></div>
-    <div class="spot" id="spot-C"><div class="label">Player C</div><div id="h-C" class="hand"></div></div>
-    <div class="spot" id="spot-D"><div class="label">Player D</div><div id="h-D" class="hand"></div></div>
+<div class="arena">
+    <div class="spot" id="spot-A"><div class="name-label">Player A</div><div id="h-A" class="hand"></div></div>
+    <div class="spot" id="spot-B"><div class="name-label">Player B</div><div id="h-B" class="hand"></div></div>
+    <div class="spot" id="spot-C"><div class="name-label">Player C</div><div id="h-C" class="hand"></div></div>
+    <div class="spot" id="spot-D"><div class="name-label">Player D</div><div id="h-D" class="hand"></div></div>
     <div class="pit" id="pit-area"></div>
 </div>
 
-<div class="logs" id="log-area"></div>
+<div class="log-stream" id="logs"></div>
 
 <script>
+/* --- DATABASE CONNECTION --- */
 const SB_URL = "https://pftbngrjxxkasossvhwm.supabase.co";
 const SB_KEY = "sb_publishable_EmdkxXEgX5XYcvPnKZjdMA_Ff8G9PdC";
 const supabase = window.supabase.createClient(SB_URL, SB_KEY);
 
-let room = null;
+let activeRoom = new URLSearchParams(window.location.search).get('room');
 let myID = Math.random().toString(36).substring(7);
 let mySeat = '';
 let channel = null;
@@ -101,14 +112,20 @@ let state = {
     scores: {t1:0, t2:0}, logs: [], trump: '', deck: []
 };
 
-async function joinRoom(id) {
-    if(!id) return alert("Enter a room name");
-    room = id.toUpperCase();
-    document.getElementById('join-controls').style.display = 'none';
-    document.getElementById('waiting').style.display = 'block';
-    document.getElementById('room-id-tag').innerText = "Room: " + room;
+window.onload = () => { if(activeRoom) connectToRoom(activeRoom); };
 
-    channel = supabase.channel(`room_${room}`, { config: { presence: { key: myID } } });
+function setRoomFromInput() {
+    const val = document.getElementById('room-input').value.trim();
+    if(!val) return alert("Please enter a room name");
+    window.location.search = `?room=${val.toUpperCase()}`;
+}
+
+async function connectToRoom(id) {
+    document.getElementById('room-init').style.display = 'none';
+    document.getElementById('room-wait').style.display = 'block';
+    document.getElementById('display-room-id').innerText = id;
+
+    channel = supabase.channel(`arena_${id}`, { config: { presence: { key: myID } } });
     
     channel
     .on('presence', { event: 'sync' }, () => {
@@ -119,98 +136,113 @@ async function joinRoom(id) {
         players.forEach((p, i) => {
             const seat = ['A','B','C','D'][i] || 'Spec';
             if(p.id === myID) mySeat = seat;
-            listHtml += `<div>Seat ${seat}: ${p.id === myID ? '<b>YOU</b>' : 'Online'}</div>`;
+            listHtml += `<div style="margin-bottom:5px;">• Player ${seat}: ${p.id === myID ? '<b style="color:var(--success)">YOU</b>' : 'Connected'}</div>`;
         });
-        document.getElementById('player-list').innerHTML = listHtml;
+        document.getElementById('p-list').innerHTML = listHtml;
         
         if(players.length >= 4) {
-            document.getElementById('wait-status').innerText = "Ready!";
+            document.getElementById('wait-msg').innerText = "Table Full - Ready!";
             if(mySeat === 'A') document.getElementById('start-btn').style.display = 'block';
         }
     })
-    .on('broadcast', { event: 'state' }, ({ payload }) => { state = payload; render(); })
-    .on('broadcast', { event: 'go' }, () => document.getElementById('lobby').style.display = 'none')
+    .on('broadcast', { event: 'state-sync' }, ({ payload }) => { state = payload; render(); })
+    .on('broadcast', { event: 'game-start' }, () => document.getElementById('lobby').style.display = 'none')
     .subscribe(async (s) => { if(s === 'SUBSCRIBED') await channel.track({id: myID, joined: Date.now()}); });
 }
 
-function gameInit() {
+/* --- GAME LOGIC (RULES) --- */
+function dealInitialCards() {
     const cards = [];
     ['S','C','H','D'].forEach(s => ['7','8','9','10','J','Q','K','A'].forEach(v => cards.push({s, v})));
     cards.sort(() => Math.random() - 0.5);
 
     state = {
-        ...state, phase: 'BID', turn: 'A',
+        ...state, phase: 'BIDDING', turn: 'A',
         hands: { A: cards.slice(0,4), B: cards.slice(4,8), C: cards.slice(8,12), D: cards.slice(12,16) },
-        deck: cards.slice(16), logs: ["Game started. Bidding 4 cards."]
+        deck: cards.slice(16), logs: ["Round started. 4 cards dealt. Bid now!"]
     };
-    channel.send({ type: 'broadcast', event: 'go', payload: {} });
+    channel.send({ type: 'broadcast', event: 'game-start', payload: {} });
     sync();
 }
 
-function handleBid(val) {
+function submitBid(val) {
     if(val > 0) { state.bid = val; state.bidder = mySeat; }
     const order = ['A','B','C','D'];
-    let idx = order.indexOf(mySeat);
-    if(idx === 3) {
-        state.phase = 'TRUMP';
+    let nextIdx = order.indexOf(mySeat) + 1;
+    
+    if(nextIdx > 3) {
+        state.phase = 'TRUMP_SELECT';
         state.turn = state.bidder || 'A';
+        state.logs.push(`Bidding over. ${state.turn} choosing Trump.`);
     } else {
-        state.turn = order[idx + 1];
+        state.turn = order[nextIdx];
+        state.logs.push(`Player ${mySeat} ${val > 0 ? 'bids ' + val : 'passed'}`);
     }
-    state.logs.push(`Player ${mySeat} ${val > 0 ? 'bid ' + val : 'passed'}`);
     sync();
 }
 
-function setTrump(s) {
-    state.trump = s; state.phase = 'PLAY'; state.turn = 'A';
+function setTrump(suit) {
+    state.trump = suit; state.phase = 'PLAY'; state.turn = 'A';
     ['A','B','C','D'].forEach((p, i) => {
         state.hands[p] = state.hands[p].concat(state.deck.slice(i*4, (i+1)*4));
     });
-    state.logs.push(`Trump set! Full cards dealt.`);
+    state.logs.push(`Trump set! Remaining 4 cards dealt. Let's play!`);
     sync();
 }
 
-function play(i) {
+function playCard(i) {
     if(state.turn !== mySeat || state.phase !== 'PLAY') return;
     state.pit.push({ p: mySeat, c: state.hands[mySeat].splice(i, 1)[0] });
     state.turn = ['A','B','C','D'][(['A','B','C','D'].indexOf(mySeat)+1)%4];
-    if(state.pit.length === 4) setTimeout(resolve, 1000);
+    if(state.pit.length === 4) setTimeout(evaluateTrick, 1200);
     sync();
 }
 
-function resolve() {
-    const win = state.pit[0].p; // Logic simplified for demo
+function evaluateTrick() {
+    const win = state.pit[0].p; 
     if(win === 'A' || win === 'C') state.scores.t1++; else state.scores.t2++;
-    state.logs.push(`Trick: ${win}`);
+    state.logs.push(`Trick won by ${win}`);
     state.pit = []; state.turn = win;
     sync();
 }
 
+/* --- UI UPDATES --- */
 function render() {
     if(state.phase !== 'LOBBY') document.getElementById('lobby').style.display = 'none';
-    document.getElementById('s1').innerText = state.scores.t1;
-    document.getElementById('s2').innerText = state.scores.t2;
-    document.getElementById('trump-display').innerText = "TRUMP: " + (state.trump || "?");
+    document.getElementById('score1').innerText = state.scores.t1;
+    document.getElementById('score2').innerText = state.scores.t2;
+    document.getElementById('game-info').innerHTML = `Bid: ${state.bid} (${state.bidder})<br>Trump: ${state.trump || '?'}`;
     
-    const ui = document.getElementById('ui'); ui.innerHTML = '';
+    const ui = document.getElementById('ui-controls'); ui.innerHTML = '';
     if(state.turn === mySeat) {
-        if(state.phase === 'BID') ui.innerHTML = `<button class="btn" onclick="handleBid(${state.bid+1})">Bid ${state.bid+1}</button><button class="btn btn-danger" onclick="handleBid(0)">Pass</button>`;
-        else if(state.phase === 'TRUMP') ['S','C','H','D'].forEach(s => ui.innerHTML += `<button class="btn" onclick="setTrump('${s}')">${{S:'♠',C:'♣',H:'♥',D:'♦'}[s]}</button>`);
+        if(state.phase === 'BIDDING') {
+            ui.innerHTML = `<button class="btn" onclick="submitBid(${state.bid+1})">Bid ${state.bid+1}</button>
+                            <button class="btn" style="background:var(--danger)" onclick="submitBid(0)">Pass</button>`;
+        } else if(state.phase === 'TRUMP_SELECT') {
+            ['S','C','H','D'].forEach(s => {
+                const char = {S:'♠',C:'♣',H:'♥',D:'♦'}[s];
+                ui.innerHTML += `<button class="btn" onclick="setTrump('${s}')">${char}</button>`;
+            });
+        }
     }
 
     ['A','B','C','D'].forEach(p => {
         document.getElementById(`spot-${p}`).classList.toggle('active', state.turn === p);
         document.getElementById(`h-${p}`).innerHTML = state.hands[p].map((c, i) => {
-            if(p === mySeat) return `<div class="card playable ${c.s==='H'||c.s==='D'?'red':''}" onclick="play(${i})">${c.v}${{S:'♠',C:'♣',H:'♥',D:'♦'}[c.s]}</div>`;
+            const sym = {S:'♠',C:'♣',H:'♥',D:'♦'}[c.s];
+            if(p === mySeat) return `<div class="card playable ${c.s==='H'||c.s==='D'?'red':''}" onclick="playCard(${i})">${c.v}${sym}</div>`;
             return `<div class="card back"></div>`;
         }).join('');
     });
 
-    document.getElementById('pit-area').innerHTML = state.pit.map(i => `<div class="card ${i.c.s==='H'||i.c.s==='D'?'red':''}">${i.c.v}${{S:'♠',C:'♣',H:'♥',D:'♦'}[i.c.s]}</div>`).join('');
-    document.getElementById('log-area').innerHTML = state.logs.slice(-4).reverse().map(l => `<div>${l}</div>`).join('');
+    document.getElementById('pit-area').innerHTML = state.pit.map(i => {
+        const sym = {S:'♠',C:'♣',H:'♥',D:'♦'}[i.c.s];
+        return `<div class="pit-card ${i.c.s==='H'||i.c.s==='D'?'red':''}">${i.c.v}${sym}</div>`;
+    }).join('');
+    document.getElementById('logs').innerHTML = state.logs.slice(-4).reverse().map(l => `<div>${l}</div>`).join('');
 }
 
-function sync() { channel.send({ type: 'broadcast', event: 'state', payload: state }); render(); }
+function sync() { channel.send({ type: 'broadcast', event: 'state-sync', payload: state }); render(); }
 </script>
 </body>
 </html>
