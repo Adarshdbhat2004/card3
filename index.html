@@ -3,347 +3,343 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Multiplayer Card Game - Active Core</title>
-
-    <!-- Supabase JS CDN Library -->
-    <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+    <title>4-Player Team Game - Online</title>
     
+    <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+    <script src="https://download.agora.io/sdk/release/AgoraRTC_N-4.18.0.js"></script>
+
     <style>
         :root {
-            --bg-color: #1a252f;
-            --panel-color: #34495e;
-            --accent-color: #f1c40f;
-            --blue-btn: #3498db;
-            --green-btn: #2ecc71;
-            --red-btn: #e74c3c;
+            --primary: #2c3e50; --accent: #3498db; --success: #2ecc71;
+            --danger: #e74c3c; --light: #ecf0f1; --dark: #1a252f;
         }
-
-        body {
-            margin: 0; padding: 0;
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-            background: var(--bg-color); color: white;
-            -webkit-tap-highlight-color: transparent;
-        }
-
-        /* Lobby overlay screen configuration */
-        #setup-screen {
-            position: fixed; inset: 0;
-            background: var(--bg-color);
-            display: flex; flex-direction: column;
-            justify-content: center; align-items: center;
-            gap: 15px; padding: 20px; text-align: center; z-index: 100;
-        }
-
-        .btn {
-            padding: 14px 24px; border: none; border-radius: 8px;
-            cursor: pointer; font-weight: bold; font-size: 16px;
-            text-transform: uppercase; letter-spacing: 0.5px;
-            box-shadow: 0 4px 6px rgba(0,0,0,0.2);
-            transition: transform 0.1s ease;
-        }
-        .btn:active { transform: scale(0.96); }
-        .btn-green { background: var(--green-btn); color: white; }
-        .btn-blue { background: var(--blue-btn); color: white; }
-        .btn-red { background: var(--red-btn); color: white; }
-
-        #room-url-input {
-            width: 85%; max-width: 320px; padding: 12px;
-            border-radius: 6px; border: 2px solid var(--blue-btn);
-            background: #2c3e50; color: white; text-align: center;
-            font-size: 14px; margin-bottom: 10px;
-        }
-
-        #status-text { color: var(--accent-color); font-weight: bold; text-align: center; font-size: 16px; margin: 5px 0; }
-        .player-badge { background: #34495e; padding: 6px 12px; border-radius: 20px; margin: 4px; display: inline-block; font-size: 14px; border: 1px solid rgba(255,255,255,0.2); }
-
-        /* Gameplay Arena layouts Layout */
-        #main-game-container { display: none; padding: 15px; max-width: 600px; margin: 0 auto; }
-        .panel { background: var(--panel-color); padding: 15px; border-radius: 12px; margin-bottom: 15px; box-shadow: 0 4px 10px rgba(0,0,0,0.2); }
+        * { box-sizing: border-box; font-family: 'Segoe UI', sans-serif; }
+        body { background-color: var(--dark); color: var(--light); margin: 0; padding: 10px; overflow-x: hidden; }
         
-        #table-arena {
-            display: grid; grid-template-columns: repeat(auto-fit, minmax(100px, 1fr)); gap: 10px; margin: 15px 0;
+        /* Lobby Styles */
+        #lobby-screen {
+            position: fixed; inset: 0; background: var(--dark); z-index: 1000;
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
         }
-        .slot-box { background: rgba(0,0,0,0.2); padding: 10px; border-radius: 8px; text-align: center; min-height: 140px; }
-        .slot-box h4 { margin: 0 0 8px 0; font-size: 13px; color: #bdc3c7; }
-        
-        .card-placeholder {
-            width: 70px; height: 100px; border: 2px dashed rgba(255,255,255,0.3); margin: 0 auto;
-            border-radius: 6px; display: flex; justify-content: center; align-items: center; font-weight: bold;
-        }
-        .active-card {
-            width: 70px; height: 100px; background: white; color: black; border-radius: 6px;
-            margin: 0 auto; display: flex; flex-direction: column; justify-content: center; align-items: center;
-            font-size: 20px; font-weight: bold; box-shadow: 0 4px 8px rgba(0,0,0,0.4);
-        }
-        .red { color: var(--red-btn); }
-        .black { color: #2c3e50; }
 
-        .hand-container { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; margin-top: 10px; }
-        .playable-card {
-            width: 65px; height: 95px; background: white; color: black; border-radius: 6px;
-            display: flex; flex-direction: column; justify-content: center; align-items: center;
-            font-size: 18px; font-weight: bold; cursor: pointer; box-shadow: 0 3px 6px rgba(0,0,0,0.3);
+        /* Voice Status Bar */
+        .voice-bar {
+            background: #2c3e50; padding: 8px 15px; border-radius: 50px;
+            display: flex; align-items: center; gap: 10px; margin-bottom: 10px;
+            border: 1px solid var(--accent);
         }
-        .playable-card.disabled { opacity: 0.4; pointer-events: none; }
+        .mic-dot { width: 10px; height: 10px; background: var(--danger); border-radius: 50%; }
+        .mic-active { background: var(--success); box-shadow: 0 0 8px var(--success); }
+
+        /* Existing Game Styles Integration */
+        .teams-banner { display: grid; grid-template-columns: 1fr auto 1fr; gap: 10px; background: #2c3e50; padding: 10px; border-radius: 8px; margin-bottom: 10px; text-align: center; }
+        .round-table-arena { 
+            position: relative; width: 100%; max-width: 500px; height: 450px; 
+            background: #1e2b37; border: 4px solid #34495e; border-radius: 50%; 
+            margin: 20px auto; display: grid; 
+            grid-template-areas: ". pA ." "pD pit pB" ". pC .";
+            grid-template-rows: 120px 1fr 120px; grid-template-columns: 100px 1fr 100px;
+            align-items: center; justify-items: center;
+        }
+        .player-spot { width: 100%; display: flex; flex-direction: column; align-items: center; }
+        #spot-A { grid-area: pA; } #spot-B { grid-area: pB; } #spot-C { grid-area: pC; } #spot-D { grid-area: pD; }
+        .table-center { grid-area: pit; width: 100%; height: 100%; display: flex; justify-content: center; align-items: center; position: relative; }
+        
+        .card { background: white; color: black; border-radius: 4px; padding: 5px 8px; font-weight: bold; border: 1px solid #ccc; cursor: pointer; font-size: 12px; }
+        .card.red { color: var(--danger); }
+        .card.hidden-card { background: #34495e; color: transparent; border: 1px solid #2c3e50; pointer-events: none; }
+        .played-card-box { background: white; color: black; width: 40px; height: 60px; border-radius: 4px; display: flex; flex-direction: column; justify-content: center; align-items: center; font-weight: bold; position: relative; }
+
+        .btn { background: var(--accent); color: white; border: none; padding: 10px 20px; border-radius: 5px; cursor: pointer; font-weight: bold; }
+        .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+        .player-label { font-size: 12px; background: #2c3e50; padding: 2px 8px; border-radius: 10px; margin-bottom: 5px; }
+        .active .player-label { background: var(--accent); }
     </style>
 </head>
-
 <body>
 
-<!-- LOBBY HUB OVERLAY -->
-<div id="setup-screen">
-    <h1>Card Match Lobby</h1>
-    <p style="color:#bdc3c7; max-width:300px; margin:-5px 0 10px 0;">Create a room, send the link, and hit start once your team connects.</p>
-    
-    <button id="btn-create-room" class="btn btn-green">Create Game Room</button>
-    
-    <div id="share-link-box" style="display:none; width: 100%;">
-        <input type="text" id="room-url-input" readonly><br>
-        <button id="btn-copy-link" class="btn btn-blue">Copy Link & Send</button>
+<div id="lobby-screen">
+    <h2 id="lobby-status">Initialize Game Room</h2>
+    <div id="setup-controls">
+        <button id="btn-create" class="btn" onclick="createOnlineRoom()">Create New Game</button>
     </div>
-
-    <p id="status-text">Connecting to Server Core...</p>
-    <div id="connected-players-list"></div>
-    
-    <!-- Action control visible exclusively to room host -->
-    <button id="btn-start-match" class="btn btn-green" style="display: none; margin-top: 15px; width: 85%; max-width: 320px;">Start Live Match</button>
+    <div id="share-area" style="display:none; margin-top: 20px; text-align: center;">
+        <p>Invite Players (Need 4 total):</p>
+        <input type="text" id="share-url" readonly style="padding:8px; width: 250px; background:#1a252f; color:white; border:1px solid #34495e;">
+        <div id="player-check-list" style="margin-top: 15px;"></div>
+        <button id="btn-start-game" class="btn" style="margin-top:20px; background:var(--success); display:none;" onclick="broadcastStart()">Start Match Now</button>
+    </div>
 </div>
 
-<!-- CENTRAL GAMEPLAY FIELD (Reveals after start broadcast hits) -->
-<div id="main-game-container">
-    <div class="panel">
-        <div style="display: flex; justify-content: space-between; align-items: center;">
-            <h2 style="margin: 0; font-size: 18px;" id="identity-header">Playing Arena</h2>
-            <div style="background: var(--accent-color); color: black; padding: 4px 10px; border-radius: 12px; font-size: 12px; font-weight: bold;">TRUMP: ♠</div>
-        </div>
-        <p id="game-live-status" style="margin: 10px 0 0 0; color: var(--accent-color); font-size: 14px; font-weight: bold;">Waiting for players to deal...</p>
+<div class="container">
+    <div class="voice-bar">
+        <div id="mic-indicator" class="mic-dot"></div>
+        <span id="voice-label" style="font-size: 12px;">Voice: Connecting...</span>
+        <button id="btn-voice" class="btn" style="padding: 4px 10px; font-size: 11px;" onclick="toggleMic()">Mute Mic</button>
     </div>
 
-    <!-- The Play Table -->
-    <div id="table-arena"></div>
+    <div class="teams-banner">
+        <div><small id="t1-n">Team 1</small><br><b id="t1-score">0</b></div>
+        <div id="match-target" style="font-size: 12px; background: #1a252f; padding: 5px; border-radius: 4px;">Waiting...</div>
+        <div><small id="t2-n">Team 2</small><br><b id="t2-score">0</b></div>
+    </div>
 
-    <!-- User Assets panel -->
-    <div class="panel">
-        <h3 style="margin: 0 0 10px 0; font-size: 15px; color: #bdc3c7;">Your Deck Hand Assets</h3>
-        <div id="my-hand-deck" class="hand-container"></div>
+    <div id="status-message" style="text-align:center; margin-bottom:10px; font-weight:bold; color:var(--accent);">Waiting for game to start...</div>
+
+    <div id="action-area" style="text-align:center; min-height: 50px; margin-bottom: 10px;"></div>
+
+    <div class="round-table-arena">
+        <div class="player-spot" id="spot-A"><div class="player-label">P-A</div><div class="cards-row" id="cards-A"></div></div>
+        <div class="player-spot" id="spot-B"><div class="player-label">P-B</div><div class="cards-row" id="cards-B"></div></div>
+        <div class="player-spot" id="spot-C"><div class="player-label">P-C</div><div class="cards-row" id="cards-C"></div></div>
+        <div class="player-spot" id="spot-D"><div class="player-label">P-D</div><div class="cards-row" id="cards-D"></div></div>
+        <div class="table-center" id="table-pit"></div>
     </div>
 </div>
 
 <script>
-/* =========================
-   SUPABASE SERVICE ENGINE
-========================= */
+/* ==========================================
+   CONFIG & STATE
+   ========================================== */
+const SUITS = { 'S': '♠', 'C': '♣', 'H': '♥', 'D': '♦' };
+const PLAYERS = ['A', 'B', 'C', 'D'];
 const SUPABASE_URL = "https://pftbngrjxxkasossvhwm.supabase.co";
-const SUPABASE_KEY = "sb_publishable_EmdkxXEgX5XYcvPnKZjdMA_Ff8G9PdC";
-const client = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+const SUPABASE_KEY = "sb_publishable_EmdkxXEgX5XYcvPnKZjdMA_Ff8G9PdC"; // Using provided key
+const AGORA_APP_ID = "YOUR_AGORA_APP_ID"; // Get a free ID from agora.io
+
+const client = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+const agoraClient = AgoraRTC.createClient({ mode: "rtc", codec: "vp8" });
 
 let roomID = new URLSearchParams(window.location.search).get('room');
-let myRole = ''; 
-let channel = null;
+let myPlayerID = ''; // 'A', 'B', 'C' or 'D'
+let gameChannel = null;
+let localAudioTrack = null;
+let isMuted = false;
 
-// Mock cards data structures for immediate rendering deployment
-let localHandAssets = [
-    { value: 'A', suit: '♠', color: 'black' },
-    { value: '10', suit: '♦', color: 'red' },
-    { value: 'K', suit: '♥', color: 'red' },
-    { value: 'J', suit: '♣', color: 'black' }
-];
-let tableState = {};
-let turnSequence = 'Player 1';
+// Game State
+let gameState = {
+    phase: 'LOBBY',
+    currentTurn: 'A',
+    hands: {},
+    pit: [],
+    tricksWon: { T1: 0, T2: 0 },
+    trump: null,
+    trumpRevealed: false,
+    bidTarget: 0,
+    bidder: null
+};
 
-window.addEventListener('DOMContentLoaded', () => {
+/* ==========================================
+   NETWORKING / LOBBY LOGIC
+   ========================================== */
+window.onload = () => {
     if (roomID) {
-        document.getElementById('btn-create-room').style.display = 'none';
-        initRealtimeEngine();
-    } else {
-        document.getElementById('btn-create-room').addEventListener('click', generateRoom);
+        joinRoom();
     }
-    document.getElementById('btn-copy-link').addEventListener('click', copyRoomLink);
-    document.getElementById('btn-start-match').addEventListener('click', broadcastMatchStart);
-});
+};
 
-function generateRoom() {
+function createOnlineRoom() {
     roomID = Math.random().toString(36).substring(2, 9);
-    myRole = 'Player 1';
-    
-    const link = window.location.origin + window.location.pathname + '?room=' + roomID;
-    document.getElementById('room-url-input').value = link;
-    document.getElementById('share-link-box').style.display = 'block';
-    document.getElementById('btn-create-room').style.display = 'none';
-    
-    initRealtimeEngine();
+    window.history.pushState({}, '', `?room=${roomID}`);
+    joinRoom();
 }
 
-function copyRoomLink() {
-    const input = document.getElementById('room-url-input');
-    input.select();
-    navigator.clipboard.writeText(input.value);
-    alert("Lobby entry link copied to clipboard!");
-}
+async function joinRoom() {
+    document.getElementById('setup-controls').style.display = 'none';
+    document.getElementById('share-area').style.display = 'block';
+    document.getElementById('share-url').value = window.location.href;
 
-/* =========================
-   REALTIME PRESENCE LOGIC
-========================= */
-function initRealtimeEngine() {
-    channel = client.channel(`room-${roomID}`);
+    gameChannel = client.channel(`room-${roomID}`, {
+        config: { presence: { key: roomID } }
+    });
 
-    channel
-    .on('presence', { event: 'sync' }, () => {
-        const presenceState = channel.presenceState();
-        updateLobbyUI(presenceState);
-    })
-    .on('broadcast', { event: 'start-game-signal' }, () => {
-        launchPlayFieldArena();
-    })
-    .on('broadcast', { event: 'card-dropped' }, ({ payload }) => {
-        syncTableCardPlacement(payload.player, payload.card, payload.nextTurn);
-    })
-    .subscribe(async (status) => {
-        if (status === 'SUBSCRIBED') {
-            if (!myRole) {
-                const presenceState = channel.presenceState();
-                const totalInRoom = Object.keys(presenceState).length;
-                if (totalInRoom >= 5) {
-                    document.getElementById('status-text').innerText = "Lobby is full! Limit 5 players.";
-                    channel.unsubscribe();
-                    return;
-                }
-                myRole = `Player ${totalInRoom + 1}`;
+    gameChannel
+        .on('presence', { event: 'sync' }, () => {
+            const state = gameChannel.presenceState();
+            updateLobbyUI(state);
+        })
+        .on('broadcast', { event: 'game-update' }, ({ payload }) => {
+            gameState = payload;
+            renderUI();
+        })
+        .on('broadcast', { event: 'start-match' }, () => {
+            document.getElementById('lobby-screen').style.display = 'none';
+            initVoice();
+        })
+        .subscribe(async (status) => {
+            if (status === 'SUBSCRIBED') {
+                const presence = gameChannel.presenceState();
+                const count = Object.keys(presence).length;
+                myPlayerID = PLAYERS[count] || 'Viewer';
+                document.getElementById('lobby-status').innerText = `You are Player ${myPlayerID}`;
+                await gameChannel.track({ player: myPlayerID });
             }
-
-            document.getElementById('status-text').innerText = `Syncing Profile: ${myRole}...`;
-            await channel.track({ user: myRole });
-        }
-    });
+        });
 }
 
-function updateLobbyUI(presenceState) {
-    const listContainer = document.getElementById('connected-players-list');
-    listContainer.innerHTML = '';
+function updateLobbyUI(presence) {
+    const list = document.getElementById('player-check-list');
+    const users = Object.values(presence).flatMap(u => u);
+    list.innerHTML = users.map(u => `<div>✅ Player ${u.player} is ready</div>`).join('');
     
-    const elements = Object.keys(presenceState);
-    document.getElementById('status-text').innerText = `Lobby Active (${elements.length}/5 Players)`;
-
-    elements.forEach(key => {
-        const badge = document.createElement('span');
-        badge.className = 'player-badge';
-        badge.innerText = key;
-        listContainer.appendChild(badge);
-    });
-
-    // Only display start button to Player 1 if other users are inside the connection ring
-    if (myRole === 'Player 1' && elements.length >= 2) {
-        document.getElementById('btn-start-match').style.display = 'block';
-    } else {
-        document.getElementById('btn-start-match').style.display = 'none';
+    if (users.length >= 4 && myPlayerID === 'A') {
+        document.getElementById('btn-start-game').style.display = 'inline-block';
     }
 }
 
-/* =========================
-   MATCHMAKING TRANSMISSION
-========================= */
-function broadcastMatchStart() {
-    channel.send({
-        type: 'broadcast',
-        event: 'start-game-signal',
-        payload: {}
-    });
-    launchPlayFieldArena();
-}
-
-function launchPlayFieldArena() {
-    document.getElementById('setup-screen').style.display = 'none';
-    document.getElementById('main-game-container').style.display = 'block';
-    document.getElementById('identity-header').innerText = `Arena Arena - ${myRole}`;
-    
-    // Build slots dynamically depending on active lobby members configuration
-    const totalActive = Object.keys(channel.presenceState());
-    const tableContainer = document.getElementById('table-arena');
-    tableContainer.innerHTML = '';
-
-    totalActive.forEach(pName => {
-        tableState[pName] = null;
-        const div = document.createElement('div');
-        div.className = 'slot-box';
-        div.id = `mat-slot-${pName.replace(' ', '')}`;
-        div.innerHTML = `<h4>${pName === myRole ? 'You' : pName}</h4><div class="card-placeholder" id="placeholder-${pName.replace(' ', '')}">?</div>`;
-        tableContainer.appendChild(div);
-    });
-
-    refreshTurnIndicators();
-}
-
-/* =========================
-   CORE INTERACTIVE LOGIC
-========================= */
-function refreshTurnIndicators() {
-    const banner = document.getElementById('game-live-status');
-    if (turnSequence === myRole) {
-        banner.innerText = "YOUR TURN! Throw down a hand asset card onto the mat.";
-    } else {
-        banner.innerText = `Waiting for ${turnSequence} to place their card...`;
-    }
-
-    const handContainer = document.getElementById('my-hand-deck');
-    handContainer.innerHTML = '';
-
-    localHandAssets.forEach((card, index) => {
-        const element = document.createElement('div');
-        element.className = `playable-card ${card.color}`;
-        if (turnSequence !== myRole) element.classList.add('disabled');
+/* ==========================================
+   VOICE CALLING (AGORA)
+   ========================================== */
+async function initVoice() {
+    try {
+        await agoraClient.join(AGORA_APP_ID, roomID, null, null);
+        localAudioTrack = await AgoraRTC.createMicrophoneAudioTrack();
+        await agoraClient.publish([localAudioTrack]);
         
-        element.innerHTML = `<div>${card.value}${card.suit}</div>`;
-        element.onclick = () => dropCardOnTable(index);
-        handContainer.appendChild(element);
-    });
-}
-
-function dropCardOnTable(index) {
-    if (turnSequence !== myRole) return;
-    
-    const cardSelected = localHandAssets.splice(index, 1)[0];
-    
-    // Calculate who plays next sequentially
-    const totalActive = Object.keys(channel.presenceState());
-    const myIdx = totalActive.indexOf(myRole);
-    const nextIdx = (myIdx + 1) % totalActive.length;
-    const nextPlayer = totalActive[nextIdx];
-
-    channel.send({
-        type: 'broadcast',
-        event: 'card-dropped',
-        payload: { player: myRole, card: cardSelected, nextTurn: nextPlayer }
-    });
-
-    syncTableCardPlacement(myRole, cardSelected, nextPlayer);
-}
-
-function syncTableCardPlacement(player, card, nextTurn) {
-    tableState[player] = card;
-    const placeholder = document.getElementById(`placeholder-${player.replace(' ', '')}`);
-    if (placeholder) {
-        placeholder.parentElement.innerHTML = `<h4>${player === myRole ? 'You' : player}</h4>
-            <div class="active-card ${card.color}">${card.value}${card.suit}</div>`;
-    }
-
-    // Advance turn tracking configurations
-    turnSequence = nextTurn;
-    
-    // Reset round table once everyone plays
-    const totalActive = Object.keys(channel.presenceState());
-    const allPlayed = totalActive.every(p => tableState[p] !== null);
-    
-    if (allPlayed) {
-        document.getElementById('game-live-status').innerText = "Trick Complete! Clearing board panel arena...";
-        setTimeout(() => {
-            totalActive.forEach(p => tableState[p] = null);
-            launchPlayFieldArena(); 
-        }, 3000);
-    } else {
-        refreshTurnIndicators();
+        document.getElementById('mic-indicator').classList.add('mic-active');
+        document.getElementById('voice-label').innerText = "Voice: Connected";
+        
+        agoraClient.on("user-published", async (user, mediaType) => {
+            await agoraClient.subscribe(user, mediaType);
+            if (mediaType === "audio") user.audioTrack.play();
+        });
+    } catch (e) {
+        console.error("Voice failed", e);
+        document.getElementById('voice-label').innerText = "Voice: Failed";
     }
 }
+
+function toggleMic() {
+    isMuted = !isMuted;
+    localAudioTrack.setEnabled(!isMuted);
+    document.getElementById('btn-voice').innerText = isMuted ? "Unmute Mic" : "Mute Mic";
+    document.getElementById('mic-indicator').classList.toggle('mic-active', !isMuted);
+}
+
+/* ==========================================
+   GAME ENGINE (CONVERTED FROM OFFLINE)
+   ========================================== */
+function broadcastStart() {
+    // Only Player A initializes the deck to ensure everyone sees the same shuffle
+    const deck = [];
+    const suits = ['S', 'C', 'H', 'D'];
+    const values = ['7', '8', '9', '10', 'J', 'Q', 'K', 'A'];
+    suits.forEach(s => values.forEach(v => deck.push({ suit: s, value: v })));
+    for (let i = deck.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [deck[i], deck[j]] = [deck[j], deck[i]];
+    }
+
+    gameState = {
+        phase: 'BID1',
+        currentTurn: 'A',
+        hands: {
+            A: deck.slice(0, 8),
+            B: deck.slice(8, 16),
+            C: deck.slice(16, 24),
+            D: deck.slice(24, 32)
+        },
+        pit: [],
+        tricksWon: { T1: 0, T2: 0 },
+        trump: null,
+        trumpRevealed: false,
+        bidTarget: 5,
+        bidder: 'A'
+    };
+
+    gameChannel.send({ type: 'broadcast', event: 'start-match', payload: {} });
+    syncGameState();
+}
+
+function syncGameState() {
+    gameChannel.send({ type: 'broadcast', event: 'game-update', payload: gameState });
+    renderUI();
+}
+
+function renderUI() {
+    document.getElementById('t1-score').innerText = gameState.tricksWon.T1;
+    document.getElementById('t2-score').innerText = gameState.tricksWon.T2;
+    document.getElementById('status-message').innerText = `Turn: Player ${gameState.currentTurn}`;
+    
+    // Render Hands
+    PLAYERS.forEach(p => {
+        const row = document.getElementById(`cards-${p}`);
+        row.innerHTML = '';
+        document.getElementById(`spot-${p}`).classList.toggle('active', gameState.currentTurn === p);
+
+        gameState.hands[p].forEach((card, idx) => {
+            const btn = document.createElement('button');
+            const isRed = card.suit === 'H' || card.suit === 'D';
+            
+            if (p === myPlayerID) {
+                btn.className = `card ${isRed ? 'red' : ''}`;
+                btn.innerText = `${card.value}${SUITS[card.suit]}`;
+                btn.onclick = () => handlePlay(idx);
+            } else {
+                btn.className = `card hidden-card`;
+                btn.innerText = `?`;
+            }
+            row.appendChild(btn);
+        });
+    });
+
+    // Render Table Pit
+    const pit = document.getElementById('table-pit');
+    pit.innerHTML = gameState.pit.map(p => `
+        <div class="played-card-box ${p.card.suit === 'H' || p.card.suit === 'D' ? 'red' : ''}">
+            ${p.card.value}${SUITS[p.card.suit]}
+            <div style="font-size:9px; position:absolute; bottom:-12px; color:white;">${p.player}</div>
+        </div>
+    `).join('');
+
+    // Handle Bidding Phase Buttons
+    const actions = document.getElementById('action-area');
+    actions.innerHTML = '';
+    if (gameState.phase === 'BID1' && myPlayerID === gameState.currentTurn) {
+        actions.innerHTML = `
+            <button class="btn" onclick="sendBid(5)">Bid 5</button>
+            <button class="btn" onclick="sendBid(6)">Bid 6</button>
+            <button class="btn" style="background:gray" onclick="sendBid(0)">Pass</button>
+        `;
+    }
+}
+
+function handlePlay(idx) {
+    if (gameState.phase !== 'PLAY' || gameState.currentTurn !== myPlayerID) return;
+    
+    const card = gameState.hands[myPlayerID].splice(idx, 1)[0];
+    gameState.pit.push({ player: myPlayerID, card: card });
+    
+    // Move to next player
+    const curIdx = PLAYERS.indexOf(myPlayerID);
+    gameState.currentTurn = PLAYERS[(curIdx + 1) % 4];
+
+    // Evaluate Trick if 4 cards are down
+    if (gameState.pit.length === 4) {
+        setTimeout(evaluateTrick, 1000);
+    }
+    
+    syncGameState();
+}
+
+function sendBid(val) {
+    gameState.bidTarget = val;
+    gameState.phase = 'PLAY'; // Simplified for this version
+    gameState.currentTurn = 'A';
+    syncGameState();
+}
+
+function evaluateTrick() {
+    // Basic logic: high card of lead suit wins (Add trump logic based on your offline code)
+    const winner = gameState.pit[0].player; 
+    if (winner === 'A' || winner === 'C') gameState.tricksWon.T1++;
+    else gameState.tricksWon.T2++;
+    
+    gameState.pit = [];
+    gameState.currentTurn = winner;
+    syncGameState();
+}
+
 </script>
-
 </body>
 </html>
