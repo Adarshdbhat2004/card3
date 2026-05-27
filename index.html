@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>4-Player Online Card Game with Voice Chat</title>
+    <!-- PeerJS CDN: Handles peer-to-peer data synchronization and audio stream pipelines -->
     <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
     <style>
         :root {
@@ -80,7 +81,6 @@
             text-align: center; font-size: 12px; color: #a1a1aa; margin-top: 4px;
         }
 
-        /* Sitting order placement matrix configuration: A -> B -> C -> D */
         #table-mat {
             display: grid;
             grid-template-areas: 
@@ -139,21 +139,23 @@
 </head>
 <body>
 
+<!-- NETWORK ENTRY HUB AND NAME COLLECTOR SCREEN -->
 <div id="lobby-screen">
     <h2>4-Player Team Table Hub</h2>
     <p style="color:#9ca3af; font-size: 14px; margin:-5px 0 15px 0;">Team 1 (Players 1 & 3) &nbsp;vs&nbsp; Team 2 (Players 2 & 4)</p>
     
     <div id="lobby-setup-form">
         <input type="text" id="player-name-input" class="input-field" placeholder="Enter Your Real Name" maxlength="12"><br>
-        <button id="btn-host" class="btn btn-green" onclick="setupHostRoom()">Host Match Room</button>
-        <p id="auto-join-text" style="display:none; color:var(--accent); font-weight:bold;">Processing invite link line parameters...</p>
+        <button id="btn-action" class="btn btn-green" onclick="initiateLobbyRole()">Host Match Room</button>
     </div>
 
-    <div id="lobby-status-lbl" style="font-weight: bold; color: var(--accent);"></div>
+    <div id="lobby-status-lbl" style="font-weight: bold; color: var(--accent); margin-top: 15px;"></div>
 </div>
 
+<!-- LIVE ACTIVE MATCH CONTROLLER INTERFACE -->
 <div id="game-container">
     
+    <!-- DASHBOARD PANEL -->
     <div class="panel">
         <div class="score-row">
             <div>Team 1: <span id="ui-score-1">0</span></div>
@@ -165,11 +167,12 @@
             <div id="ui-match-lbl">Match: 1</div>
             <div id="ui-bid-lbl">Target Bid: None</div>
         </div>
-        <div id="voice-status">🎙️ Audio Channel Active</div>
+        <div id="voice-status">🎙️ Audio Channel Idle</div>
         <hr style="border:0; border-top:1px solid rgba(255,255,255,0.1); margin: 8px 0 4px 0;">
         <p id="status-text" class="status-bar">Synchronizing pipelines...</p>
     </div>
 
+    <!-- PLAY ZONE LAYOUT -->
     <div id="table-mat">
         <div class="mat-node" id="node-0"><h4>Player 1</h4><div class="turn-dot">▲ CURRENT TURN</div><div class="card-placeholder" id="mat-card-0"></div></div>
         <div class="mat-node" id="node-1"><h4>Player 2</h4><div class="turn-dot">▲ CURRENT TURN</div><div class="card-placeholder" id="mat-card-1"></div></div>
@@ -177,12 +180,14 @@
         <div class="mat-node" id="node-3"><h4>Player 4</h4><div class="turn-dot">▲ CURRENT TURN</div><div class="card-placeholder" id="mat-card-3"></div></div>
     </div>
 
+    <!-- STAGE 1: FIRST BIDDING PANEL -->
     <div id="modal-bid-1" class="modal-view">
         <h3>First Bidding Round (4 Cards)</h3>
         <p id="bid-1-instruction">Bidding sequence moving...</p>
         <div id="bid-1-buttons"></div>
     </div>
 
+    <!-- STAGE 2: TRUMP SELECTION WINDOW -->
     <div id="modal-trump-select" class="modal-view">
         <h3>Select Trump Suit</h3>
         <p id="trump-select-instruction">Choose the hidden trump card asset:</p>
@@ -192,6 +197,7 @@
         <button class="btn btn-suit" onclick="submitTrumpSuit('♦')" style="color:#dc2626;">♦ Diamonds</button>
     </div>
 
+    <!-- STAGE 3: SECOND BIDDING PANEL -->
     <div id="modal-bid-2" class="modal-view">
         <h3>Second Bidding Round (8 Cards)</h3>
         <p>Choose to override the trump suit to steal lead throw, or pass:</p>
@@ -200,6 +206,7 @@
         <button class="btn btn-red" style="margin:5px;" onclick="submitSecondBid('NO')">No</button>
     </div>
 
+    <!-- USER PLAYER HAND PANEL -->
     <div class="panel" id="hand-panel">
         <h3 style="margin: 0 0 6px 0; font-size: 14px;">Your Hidden Assets (<span id="ui-card-count">0</span> cards)</h3>
         <div id="my-hand" class="hand-flex"></div>
@@ -214,31 +221,29 @@
 let peer = null;
 let connections = [];
 let localAudioStream = null;
-let myPlayerIndex = null; // 0=A, 1=B, 2=C, 3=D
+let myPlayerIndex = null; 
 let isHost = false;
+let targetRoomId = null;
 
 const suits = ['♠','♣','♥','♦'];
 const values = ['7','8','9','10','J','Q','K','A'];
 const cardsPower = { '7':7, '8':8, '9':9, '10':10, 'J':11, 'Q':12, 'K':13, 'A':14 };
 
-// Absolute Sitting Sequence Engine Map Rules
-const basePlayers = ['A', 'B', 'C', 'D'];
-
 let gameState = {
     matchNumber: 1,
-    opportunityIndex: 0, // 0=A, 1=B, 2=C, 3=D
-    phase: 'LOBBY', // 'BID_1', 'TRUMP_SELECT', 'BID_2', 'PLAYING', 'END'
-    names: ["Player 1", "Player 2", "Player 3", "Player 4"],
-    hands: [[], [], [], []], // Index aligned indices arrays
+    opportunityIndex: 0, 
+    phase: 'LOBBY', 
+    names: ["", "", "", ""],
+    hands: [[], [], [], []], 
     tableCards: [null, null, null, null],
     trumpSuit: null,
     trumpRevealed: false,
     
-    bid1Tracker: [], // list of {idx, choice}
+    bid1Tracker: [], 
     highestBidderIndex: null,
     highestBidValue: 0,
     
-    bid2Tracker: [], // list of {idx, choice}
+    bid2Tracker: [], 
     phase2OverrideTriggered: false,
     
     currentTurnIndex: null,
@@ -252,18 +257,29 @@ let gameState = {
 
 window.addEventListener('DOMContentLoaded', () => {
     const params = new URLSearchParams(window.location.search);
-    const room = params.get('room');
-    if (room) {
-        document.getElementById('lobby-setup-form').innerHTML = `
-            <input type="text" id="player-name-input" class="input-field" placeholder="Enter Your Real Name" maxlength="12"><br>
-            <button class="btn btn-blue" onclick="setupJoinRoom('${room}')">Join Match Room</button>
-        `;
+    targetRoomId = params.get('room');
+    if (targetRoomId) {
+        // Guest mode setup
+        document.getElementById('btn-action').innerText = "Join Table & Connect Voice";
+        document.getElementById('btn-action').className = "btn btn-blue";
     }
 });
 
-function getLocalName() {
-    let name = document.getElementById('player-name-input').value.trim();
-    return name ? name : "Player " + (myPlayerIndex !== null ? myPlayerIndex + 1 : "");
+function initiateLobbyRole() {
+    let nameInput = document.getElementById('player-name-input').value.trim();
+    if (!nameInput) {
+        alert("Please enter your real name before connecting!");
+        return;
+    }
+    
+    document.getElementById('player-name-input').disabled = true;
+    document.getElementById('btn-action').disabled = true;
+
+    if (targetRoomId) {
+        setupJoinRoom(targetRoomId, nameInput);
+    } else {
+        setupHostRoom(nameInput);
+    }
 }
 
 async function startMicrophonePipeline() {
@@ -271,62 +287,77 @@ async function startMicrophonePipeline() {
         localAudioStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
         document.getElementById('voice-status').innerText = "🎙️ Voice Audio Pipeline Activated";
     } catch (err) {
-        console.warn("Microphone access denied or error:", err);
-        document.getElementById('voice-status').innerText = "🔇 Voice Connection Active (Muted/No Mic)";
+        console.warn("Microphone access denied:", err);
+        document.getElementById('voice-status').innerText = "🔇 Mic Blocked (Audio Playback Only)";
     }
 }
 
-function setupHostRoom() {
+function setupHostRoom(hostName) {
     isHost = true;
     myPlayerIndex = 0;
-    gameState.names[0] = getLocalName();
-    document.getElementById('lobby-setup-form').style.display = 'none';
-    document.getElementById('lobby-status-lbl').innerText = "Registering room network protocols...";
+    gameState.names[0] = hostName;
+    document.getElementById('lobby-status-lbl').innerText = "Opening room pipeline protocols...";
 
     peer = new Peer();
     peer.on('open', async (id) => {
         await startMicrophonePipeline();
         const link = `${window.location.origin}${window.location.pathname}?room=${id}`;
-        document.getElementById('lobby-status-lbl').innerHTML = `
-            <p style='color:white; font-size:14px; margin-bottom:5px;'>Share this link with the other 3 players:</p>
-            <div class='link-box' id='invite-link' onclick='copyLinkText("${link}")'>${link}</div>
-            <h3 id='conn-counter' style='color:var(--accent); margin-top:15px;'>Players Connected: 1 / 4</h3>
-        `;
+        updateHostLobbyUI(link);
     });
 
-    // Voice loop calling handler interceptor
     peer.on('call', (call) => {
         call.answer(localAudioStream);
         call.on('stream', (remoteStream) => playRemoteVoiceStream(remoteStream));
     });
 
     peer.on('connection', (conn) => {
-        if (connections.length >= 3) {
+        let activePlayersCount = gameState.names.filter(n => n !== "").length;
+        if (activePlayersCount >= 4) {
             conn.on('open', () => conn.send({ type: 'FULL' }));
             return;
         }
-        let assignedIndex = connections.length + 1; // 1, 2, or 3
+
+        let assignedIndex = connections.length + 1; 
         connections.push({ conn: conn, index: assignedIndex });
 
         conn.on('open', () => {
             conn.send({ type: 'ASSIGN', index: assignedIndex });
-            document.getElementById('conn-counter').innerText = `Players Connected: ${connections.length + 1} / 4`;
         });
 
         conn.on('data', (data) => parseIncomingTraffic(data, assignedIndex));
-        conn.on('close', () => { alert("Connection lost. Resetting layout loop."); window.location.search=""; });
+        conn.on('close', () => { alert("Connection lost."); window.location.search=""; });
     });
 }
 
-async function setupJoinRoom(roomId) {
-    gameState.names[0] = "Host"; // Placeholder until sync
-    document.getElementById('lobby-status-lbl').innerText = "Connecting to peer game table...";
+function updateHostLobbyUI(link) {
+    let connectedNames = gameState.names.filter(n => n !== "");
+    let listHTML = connectedNames.map((name, i) => `<li>Slot ${i+1}: <b>${name}</b></li>`).join('');
+    
+    document.getElementById('lobby-status-lbl').innerHTML = `
+        <p style='color:white; font-size:14px; margin-bottom:5px;'>Share this link with your team:</p>
+        <div class='link-box' id='invite-link' onclick='copyLinkText("${link}")'>${link}</div>
+        <div style="background:rgba(0,0,0,0.2); padding:10px; border-radius:8px; text-align:left; max-width:280px; margin:15px auto;">
+            <p style="margin:0 0 5px 0; color:var(--accent); font-weight:bold;">Players at the Table (${connectedNames.length}/4):</p>
+            <ul style="margin:0; padding-left:20px; font-size:14px;">${listHTML}</ul>
+        </div>
+        <p style='color:#a1a1aa; font-size:12px;'>Waiting for 4 players to join before dealing...</p>
+    `;
+}
+
+async function setupJoinRoom(roomId, guestName) {
+    isHost = false;
+    document.getElementById('lobby-status-lbl').innerText = "Connecting to room audio mesh...";
     await startMicrophonePipeline();
     
     peer = new Peer();
     peer.on('open', () => {
         let conn = peer.connect(roomId);
         connections = [conn];
+        
+        conn.on('open', () => {
+            conn.send({ type: 'JOIN_NAME', name: guestName });
+        });
+        
         conn.on('data', (data) => parseIncomingTraffic(data, null));
         conn.on('close', () => { alert("Host disconnected."); window.location.href = window.location.pathname; });
     });
@@ -338,7 +369,6 @@ async function setupJoinRoom(roomId) {
 }
 
 function triggerVoiceMeshNetwork() {
-    // If client is a player, connect voice streams directly across active endpoints
     if (localAudioStream) {
         connections.forEach(c => {
             peer.call(c.conn.peer, localAudioStream);
@@ -355,8 +385,8 @@ function playRemoteVoiceStream(stream) {
 
 function copyLinkText(str) {
     navigator.clipboard.writeText(str).then(() => {
-        document.getElementById('invite-link').innerText = "LINK COPIED TO CLIPBOARD!";
-        setTimeout(() => document.getElementById('invite-link').innerText = str, 1500);
+        document.getElementById('invite-link').innerText = "LINK COPIED!";
+        setTimeout(() => updateHostLobbyUI(str), 1500);
     });
 }
 
@@ -374,11 +404,10 @@ function transmitToHost(payload) {
 function parseIncomingTraffic(msg, senderIndex) {
     if (msg.type === 'ASSIGN') {
         myPlayerIndex = msg.index;
-        document.getElementById('lobby-status-lbl').innerHTML = `<h3>Connected. Initializing asset streaming...</h3>`;
-        transmitToHost({ type: 'JOIN_NAME', name: getLocalName() });
+        document.getElementById('lobby-status-lbl').innerHTML = `<h3>Joined!</h3><p>Waiting for remaining players to enter names...</p>`;
     }
     else if (msg.type === 'FULL') {
-        alert("Lobby layout already full.");
+        alert("Lobby full.");
         window.location.href = window.location.pathname;
     }
     else if (msg.type === 'SYNC') {
@@ -388,10 +417,13 @@ function parseIncomingTraffic(msg, senderIndex) {
     else if (isHost) {
         if (msg.type === 'JOIN_NAME') {
             gameState.names[senderIndex] = msg.name;
-            if (Object.keys(gameState.names).filter(n => gameState.names[n]).length === 4 || connections.length === 3) {
-                // All names received. Trigger match loop execution.
+            const link = `${window.location.origin}${window.location.pathname}?room=${peer.id}`;
+            updateHostLobbyUI(link);
+
+            let activeCount = gameState.names.filter(n => n !== "").length;
+            if (activeCount === 4) {
                 triggerVoiceMeshNetwork();
-                setTimeout(runNewMatchEngine, 1000);
+                setTimeout(runNewMatchEngine, 1500);
             }
         }
         if (msg.type === 'ACTION_BID1') recordBid1Selection(senderIndex, msg.choice);
@@ -402,7 +434,7 @@ function parseIncomingTraffic(msg, senderIndex) {
 }
 
 /* =========================================================================
-   STRICT SYSTEM RULES MATCH LOGIC PIPELINE WITH INTEGRATED CORRECTIONS
+   STRICT SYSTEM RULES MATCH LOGIC PIPELINE
 ========================================================================= */
 function runNewMatchEngine() {
     gameState.opportunityIndex = (gameState.matchNumber - 1) % 4;
@@ -442,7 +474,6 @@ function recordBid1Selection(idx, choice) {
         let highestValue = 0;
         let winnerIdx = gameState.opportunityIndex;
 
-        // Build priority tracking sequence index starting directly from opportunity location
         let evalSequence = [];
         for (let i=0; i<4; i++) {
             evalSequence.push((gameState.opportunityIndex + i) % 4);
@@ -473,14 +504,12 @@ function recordTrumpSuitSelection(suit) {
     gameState.trumpSuit = suit;
     
     if (!gameState.phase2OverrideTriggered) {
-        // Normal Flow: Deal remaining 4 cards right after step 1 trump selection
         for (let i=0; i<4; i++) {
             gameState.hands[i] = gameState.hands[i].concat(gameState.deckRemaining.splice(0, 4));
         }
         gameState.phase = 'BID_2';
         gameState.currentTurnIndex = gameState.opportunityIndex;
     } else {
-        // Handled via Single 6/8 Override Route Rule context
         gameState.phase = 'PLAYING';
         gameState.leadPlayerIndex = gameState.highestBidderIndex;
         gameState.currentTurnIndex = gameState.highestBidderIndex;
@@ -509,16 +538,13 @@ function recordBid2Selection(idx, choice) {
         }
 
         if (overrideBidderIdx) {
-            // FIXED RULE: That player becomes new trump selector!
             gameState.highestBidderIndex = overrideBidderIdx;
             gameState.highestBidValue = overrideVal;
             gameState.phase2OverrideTriggered = true;
             
-            // Send back into Trump Selection modal window state to pick new suit with 8 cards
             gameState.phase = 'TRUMP_SELECT';
             gameState.currentTurnIndex = overrideBidderIdx;
         } else {
-            // FIXED RULE: Everyone says No -> Old trump remains, next player after original trump selector starts throw
             let originalSelectorIdx = gameState.highestBidderIndex;
             let nextThrowerIdx = (originalSelectorIdx + 1) % 4;
             
@@ -547,7 +573,6 @@ function recordCardThrowAction(idx, cardIdx) {
         emitGameState();
         setTimeout(evaluateTrickWinnerAndScores, 1500);
     } else {
-        // Move turn to the exact next clockwise player sitting order sequence
         gameState.currentTurnIndex = (idx + 1) % 4;
         emitGameState();
     }
@@ -611,12 +636,14 @@ function submitSecondBid(choice) { transmitToHost({ type: 'ACTION_BID2', choice:
 function throwLocalCard(idx) { transmitToHost({ type: 'ACTION_PLAY', cardIndex: idx }); }
 
 function renderUIFromState() {
+    if (gameState.phase === 'LOBBY') return; // Stay on name entry panel during sync build
+
     document.getElementById('lobby-screen').style.display = 'none';
     document.getElementById('game-container').style.display = 'flex';
 
     document.getElementById('ui-score-1').innerText = gameState.scoreTeam1;
     document.getElementById('ui-score-2').innerText = gameState.scoreTeam2;
-    document.getElementById('ui-match-lbl').innerText = `Match: ${gameState.matchNumber} (Opportunity Player: ${gameState.names[gameState.opportunityIndex]})`;
+    document.getElementById('ui-match-lbl').innerText = `Match: ${gameState.matchNumber} (Opportunity: ${gameState.names[gameState.opportunityIndex]})`;
     
     document.getElementById('ui-bid-lbl').innerText = gameState.highestBidderIndex !== null ? 
         `Target Bid: ${gameState.highestBidValue} points set by ${gameState.names[gameState.highestBidderIndex]}` : `Target Bid: None`;
@@ -719,7 +746,6 @@ function renderLocalHandMatrix() {
 }
 
 function renderMatPositions() {
-    // Dynamic Rotation Engine mapping layout: your layout is slot-0, next clockwise are slot-1, 2, 3
     for (let i = 0; i < 4; i++) {
         let logicalIndex = (myPlayerIndex + i) % 4; 
         
