@@ -1,166 +1,515 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>4-Player Team Cards (Voice + Realtime)</title>
-    <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
-    <script src="https://unpkg.com/peerjs@1.4.7/dist/peerjs.min.js"></script>
-    <style>
-        :root { --bg: #1a252f; --panel: #34495e; --accent: #f1c40f; }
-        body { margin: 0; background: var(--bg); color: white; font-family: sans-serif; }
-        
-        /* 4-Player Table Layout */
-        #game-table {
-            display: grid;
-            grid-template-areas: 
-                ". top ."
-                "left . right"
-                ". bottom .";
-            gap: 10px;
-            width: 300px;
-            height: 300px;
-            margin: 20px auto;
-            position: relative;
-        }
-        .slot { width: 70px; height: 100px; border: 2px dashed #7f8c8d; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 12px; }
-        .p1-slot { grid-area: bottom; border-color: var(--accent); }
-        .p2-slot { grid-area: left; }
-        .p3-slot { grid-area: top; border-color: var(--accent); } /* Partner */
-        .p4-slot { grid-area: right; }
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Online 4 Player Card Game</title>
 
-        .card { width: 60px; height: 90px; background: white; color: black; border-radius: 5px; font-weight: bold; padding: 5px; box-shadow: 0 4px 6px rgba(0,0,0,0.3); }
-        .red { color: #e74c3c; }
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
-        .controls { text-align: center; padding: 20px; }
-        .hand { display: flex; overflow-x: auto; gap: 5px; padding: 10px; background: rgba(0,0,0,0.3); position: fixed; bottom: 0; width: 100%; }
-        
-        #setup-screen { position: fixed; inset: 0; background: var(--bg); z-index: 100; display: flex; flex-direction: column; align-items: center; justify-content: center; }
-        .btn { padding: 12px 24px; border: none; border-radius: 8px; cursor: pointer; font-weight: bold; background: #3498db; color: white; }
-    </style>
+<style>
+body{
+    margin:0;
+    font-family:Arial;
+    background:#111827;
+    color:white;
+}
+
+.top{
+    padding:15px;
+    background:#1f2937;
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    flex-wrap:wrap;
+    gap:10px;
+}
+
+input,button{
+    padding:10px;
+    border:none;
+    border-radius:8px;
+    font-size:15px;
+}
+
+button{
+    cursor:pointer;
+    background:#2563eb;
+    color:white;
+}
+
+button:hover{
+    opacity:.9;
+}
+
+.main{
+    padding:20px;
+}
+
+.roomBox{
+    background:#1f2937;
+    padding:20px;
+    border-radius:10px;
+    margin-bottom:20px;
+}
+
+.players{
+    display:grid;
+    grid-template-columns:repeat(2,1fr);
+    gap:10px;
+    margin-top:20px;
+}
+
+.player{
+    background:#374151;
+    padding:15px;
+    border-radius:10px;
+    text-align:center;
+}
+
+.you{
+    border:3px solid #22c55e;
+}
+
+.cards{
+    display:flex;
+    flex-wrap:wrap;
+    gap:8px;
+    margin-top:20px;
+}
+
+.card{
+    background:white;
+    color:black;
+    padding:10px;
+    border-radius:8px;
+    min-width:45px;
+    text-align:center;
+    font-weight:bold;
+    cursor:pointer;
+}
+
+.red{
+    color:red;
+}
+
+.center{
+    margin-top:30px;
+    background:#1f2937;
+    padding:20px;
+    border-radius:10px;
+}
+
+.played{
+    display:flex;
+    gap:10px;
+    flex-wrap:wrap;
+}
+
+.status{
+    margin-top:15px;
+    font-size:18px;
+    color:#22c55e;
+}
+
+.turn{
+    color:yellow;
+}
+
+.hidden{
+    display:none;
+}
+</style>
 </head>
 <body>
 
-<div id="setup-screen">
-    <h1>4-Player Card Room</h1>
-    <p id="room-status">Initializing...</p>
-    <button id="join-btn" class="btn" style="display:none;" onclick="startJoining()">Join as Player <span id="player-num-label">?</span></button>
-</div>
-
-<div class="controls">
-    <div style="display:flex; justify-content: space-around; font-weight: bold; color: var(--accent);">
-        <div>Team 1 (P1+P3): <span id="score-t1">0</span></div>
-        <div>Team 2 (P2+P4): <span id="score-t2">0</span></div>
+<div class="top">
+    <div>
+        <h2>ONLINE 4 PLAYER CARD GAME</h2>
     </div>
-    <div id="status-msg">Waiting for players...</div>
+
+    <div>
+        <input id="playerName" placeholder="Your Name">
+        <input id="roomInput" placeholder="Room ID">
+        <button onclick="createRoom()">Create Room</button>
+        <button onclick="joinRoom()">Join Room</button>
+    </div>
 </div>
 
-<div id="game-table">
-    <div class="slot p3-slot" id="slot-P3">P3</div>
-    <div class="slot p2-slot" id="slot-P2">P2</div>
-    <div class="slot p4-slot" id="slot-P4">P4</div>
-    <div class="slot p1-slot" id="slot-P1">P1</div>
+<div class="main">
+
+<div class="roomBox">
+    <h3>Room: <span id="roomText">-</span></h3>
+    <h3>You: <span id="youText">-</span></h3>
+    <h3>Player ID: <span id="playerIdText">-</span></h3>
+
+    <div class="players" id="playersBox"></div>
+
+    <button id="startBtn" class="hidden" onclick="startGame()">Start Game</button>
 </div>
 
-<div class="hand" id="my-hand"></div>
+<div class="center">
+    <h3>Played Cards</h3>
+    <div class="played" id="playedCards"></div>
+
+    <div class="status" id="status">
+        Waiting...
+    </div>
+</div>
+
+<div class="center">
+    <h3>Your Cards</h3>
+    <div class="cards" id="myCards"></div>
+</div>
+
+</div>
 
 <script>
+
 const SUPABASE_URL = "https://pftbngrjxxkasossvhwm.supabase.co";
 const SUPABASE_KEY = "sb_publishable_EmdkxXEgX5XYcvPnKZjdMA_Ff8G9PdC";
-const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-let roomID = new URLSearchParams(window.location.search).get('room');
-let myRole = ''; 
-let channel;
-let playersInRoom = [];
+const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-// 1. Assign Roles based on current presence
-async function initLobby() {
-    if (!roomID) {
-        roomID = Math.random().toString(36).substring(7);
-        window.history.pushState({}, '', `?room=${roomID}`);
+let roomId = "";
+let myId = "";
+let myName = "";
+let gameData = null;
+
+const SUITS = ["♠","♥","♦","♣"];
+const VALUES = ["7","8","9","10","J","Q","K","A"];
+
+function randomId(){
+    return Math.random().toString(36).substring(2,8);
+}
+
+async function createRoom(){
+
+    myName = document.getElementById("playerName").value.trim();
+
+    if(!myName){
+        alert("Enter player name");
+        return;
     }
 
-    channel = supabase.channel(`room-${roomID}`, {
-        config: { presence: { key: 'user' } }
+    roomId = document.getElementById("roomInput").value.trim();
+
+    if(!roomId){
+        roomId = randomId();
+    }
+
+    myId = "P1";
+
+    const room = {
+        room_id: roomId,
+        players: [
+            {
+                id:"P1",
+                name:myName
+            }
+        ],
+        host:"P1",
+        started:false,
+        turn:"P1",
+        hands:{},
+        played:[]
+    };
+
+    const {error} = await supabaseClient
+    .from("game_rooms")
+    .insert(room);
+
+    if(error){
+        alert(error.message);
+        return;
+    }
+
+    listenRoom();
+    loadRoom();
+
+    alert("Room Created");
+}
+
+async function joinRoom(){
+
+    myName = document.getElementById("playerName").value.trim();
+    roomId = document.getElementById("roomInput").value.trim();
+
+    if(!myName || !roomId){
+        alert("Enter details");
+        return;
+    }
+
+    const {data,error} = await supabaseClient
+    .from("game_rooms")
+    .select("*")
+    .eq("room_id",roomId)
+    .single();
+
+    if(error || !data){
+        alert("Room not found");
+        return;
+    }
+
+    if(data.players.length >= 4){
+        alert("Room Full");
+        return;
+    }
+
+    myId = "P" + (data.players.length + 1);
+
+    data.players.push({
+        id:myId,
+        name:myName
     });
 
-    channel
-    .on('presence', { event: 'sync' }, () => {
-        const state = channel.presenceState();
-        playersInRoom = Object.values(state).flat();
-        
-        if (!myRole) {
-            myRole = `P${playersInRoom.length + 1}`;
-            document.getElementById('player-num-label').innerText = playersInRoom.length + 1;
-            document.getElementById('join-btn').style.display = 'block';
+    const {error:updateError} = await supabaseClient
+    .from("game_rooms")
+    .update({
+        players:data.players
+    })
+    .eq("room_id",roomId);
+
+    if(updateError){
+        alert(updateError.message);
+        return;
+    }
+
+    listenRoom();
+    loadRoom();
+}
+
+async function loadRoom(){
+
+    const {data} = await supabaseClient
+    .from("game_rooms")
+    .select("*")
+    .eq("room_id",roomId)
+    .single();
+
+    gameData = data;
+
+    render();
+}
+
+function render(){
+
+    document.getElementById("roomText").innerText = roomId;
+    document.getElementById("youText").innerText = myName;
+    document.getElementById("playerIdText").innerText = myId;
+
+    const playersBox = document.getElementById("playersBox");
+    playersBox.innerHTML = "";
+
+    gameData.players.forEach(player=>{
+
+        const div = document.createElement("div");
+
+        div.className = "player";
+
+        if(player.id === myId){
+            div.classList.add("you");
         }
-        
-        updateStatus(`Players in room: ${playersInRoom.length}/4`);
+
+        div.innerHTML = `
+            <h3>${player.name}</h3>
+            <p>${player.id}</p>
+        `;
+
+        playersBox.appendChild(div);
+    });
+
+    if(gameData.players.length === 4 && gameData.host === myId && !gameData.started){
+        document.getElementById("startBtn").classList.remove("hidden");
+    }
+
+    renderCards();
+    renderPlayed();
+
+    document.getElementById("status").innerHTML =
+    "Current Turn : <span class='turn'>" + gameData.turn + "</span>";
+}
+
+function createDeck(){
+
+    let deck = [];
+
+    for(let suit of SUITS){
+
+        for(let value of VALUES){
+
+            deck.push({
+                suit,
+                value
+            });
+
+        }
+
+    }
+
+    return deck;
+}
+
+function shuffle(array){
+
+    for(let i=array.length-1;i>0;i--){
+
+        const j = Math.floor(Math.random()*(i+1));
+
+        [array[i],array[j]] = [array[j],array[i]];
+    }
+
+}
+
+async function startGame(){
+
+    let deck = createDeck();
+
+    shuffle(deck);
+
+    let hands = {
+        P1:[],
+        P2:[],
+        P3:[],
+        P4:[]
+    };
+
+    for(let i=0;i<8;i++){
+
+        hands.P1.push(deck.pop());
+        hands.P2.push(deck.pop());
+        hands.P3.push(deck.pop());
+        hands.P4.push(deck.pop());
+
+    }
+
+    await supabaseClient
+    .from("game_rooms")
+    .update({
+        started:true,
+        hands:hands,
+        played:[],
+        turn:"P1"
     })
-    .on('broadcast', { event: 'card-played' }, ({ payload }) => {
-        showCardOnTable(payload.role, payload.card);
+    .eq("room_id",roomId);
+}
+
+function renderCards(){
+
+    const myCards = document.getElementById("myCards");
+
+    myCards.innerHTML = "";
+
+    if(!gameData.hands || !gameData.hands[myId]) return;
+
+    gameData.hands[myId].forEach((card,index)=>{
+
+        const div = document.createElement("div");
+
+        div.className = "card";
+
+        if(card.suit==="♥" || card.suit==="♦"){
+            div.classList.add("red");
+        }
+
+        div.innerText = card.value + card.suit;
+
+        div.onclick = ()=>playCard(index);
+
+        myCards.appendChild(div);
+
+    });
+
+}
+
+function renderPlayed(){
+
+    const playedCards = document.getElementById("playedCards");
+
+    playedCards.innerHTML = "";
+
+    gameData.played.forEach(item=>{
+
+        const div = document.createElement("div");
+
+        div.className = "card";
+
+        if(item.card.suit==="♥" || item.card.suit==="♦"){
+            div.classList.add("red");
+        }
+
+        div.innerHTML = `
+            ${item.card.value}${item.card.suit}
+            <br>
+            <small>${item.player}</small>
+        `;
+
+        playedCards.appendChild(div);
+
+    });
+
+}
+
+async function playCard(index){
+
+    if(gameData.turn !== myId){
+        alert("Not your turn");
+        return;
+    }
+
+    const hand = gameData.hands[myId];
+
+    const card = hand[index];
+
+    hand.splice(index,1);
+
+    gameData.played.push({
+        player:myId,
+        card:card
+    });
+
+    const nextTurn = getNextPlayer(myId);
+
+    await supabaseClient
+    .from("game_rooms")
+    .update({
+        hands:gameData.hands,
+        played:gameData.played,
+        turn:nextTurn
     })
+    .eq("room_id",roomId);
+}
+
+function getNextPlayer(id){
+
+    if(id==="P1") return "P2";
+    if(id==="P2") return "P3";
+    if(id==="P3") return "P4";
+    return "P1";
+}
+
+function listenRoom(){
+
+    supabaseClient
+    .channel("room-"+roomId)
+    .on(
+        "postgres_changes",
+        {
+            event:"UPDATE",
+            schema:"public",
+            table:"game_rooms",
+            filter:`room_id=eq.${roomId}`
+        },
+        payload=>{
+            gameData = payload.new;
+            render();
+        }
+    )
     .subscribe();
+
 }
 
-function startJoining() {
-    channel.track({ role: myRole, joined_at: new Date().toISOString() });
-    document.getElementById('setup-screen').style.display = 'none';
-    initVoice();
-    
-    if (myRole === 'P1') {
-        updateStatus("You are Host (P1). Wait for 4 players to deal.");
-    }
-}
-
-// 2. Voice Mesh (Calls all lower-indexed players)
-async function initVoice() {
-    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    const peer = new Peer(`${roomID}-${myRole}`);
-
-    peer.on('call', (call) => {
-        call.answer(stream);
-        call.on('stream', (remoteStream) => playAudio(remoteStream));
-    });
-
-    // Call everyone who joined before you
-    playersInRoom.forEach(p => {
-        if (p.role !== myRole) {
-            const call = peer.call(`${roomID}-${p.role}`, stream);
-            call.on('stream', (remoteStream) => playAudio(remoteStream));
-        }
-    });
-}
-
-function playAudio(stream) {
-    const audio = document.createElement('audio');
-    audio.srcObject = stream;
-    audio.autoplay = true;
-    document.body.appendChild(audio);
-}
-
-// 3. Game Logic
-function playCard(card) {
-    channel.send({
-        type: 'broadcast',
-        event: 'card-played',
-        payload: { role: myRole, card: card }
-    });
-    showCardOnTable(myRole, card);
-}
-
-function showCardOnTable(role, card) {
-    const slot = document.getElementById(`slot-${role}`);
-    slot.innerHTML = `<div class="card ${card.color}">${card.val}${card.suit}</div>`;
-}
-
-function updateStatus(msg) {
-    document.getElementById('status-msg').innerText = msg;
-    document.getElementById('room-status').innerText = msg;
-}
-
-initLobby();
 </script>
+
 </body>
 </html>
