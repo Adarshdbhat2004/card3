@@ -2,45 +2,36 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Team Card Game Online</title>
+    <title>Team Card Game - Online Lobby</title>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <script src="https://unpkg.com/peerjs@1.4.7/dist/peerjs.min.js"></script>
     <style>
-        :root { --primary: #3498db; --bg: #1a252f; --panel: #2c3e50; }
-        body { background: var(--bg); color: white; font-family: 'Segoe UI', sans-serif; margin: 0; display: flex; align-items: center; justify-content: center; height: 100vh; }
-        
-        /* Lobby Screen */
-        .box { background: var(--panel); padding: 30px; border-radius: 15px; text-align: center; box-shadow: 0 10px 30px rgba(0,0,0,0.5); width: 350px; }
-        .input { width: 80%; padding: 12px; margin: 10px 0; border-radius: 5px; border: none; font-size: 16px; }
-        .btn { background: var(--primary); color: white; border: none; padding: 12px 25px; border-radius: 5px; cursor: pointer; font-weight: bold; width: 85%; transition: 0.3s; }
-        .btn:hover { background: #2980b9; }
-        
-        /* Game Hidden initially */
-        #game-ui { display: none; width: 100%; height: 100%; flex-direction: column; padding: 20px; }
-        .player-list { display: flex; gap: 10px; justify-content: center; margin-bottom: 20px; }
-        .p-tag { background: #34495e; padding: 5px 15px; border-radius: 20px; font-size: 14px; border: 1px solid var(--primary); }
+        body { background: #1a252f; color: white; font-family: sans-serif; text-align: center; padding: 50px; }
+        .card-box { background: #2c3e50; padding: 30px; border-radius: 15px; display: inline-block; min-width: 300px; }
+        .btn { background: #3498db; color: white; border: none; padding: 12px 20px; border-radius: 5px; cursor: pointer; font-weight: bold; width: 100%; margin-top: 10px; }
+        .input { width: 90%; padding: 10px; margin-bottom: 10px; border-radius: 5px; border: none; }
+        .share-link { background: #16a085; padding: 10px; margin-top: 20px; font-size: 12px; word-break: break-all; border-radius: 5px; cursor: pointer; }
+        .player-tag { background: #34495e; padding: 5px; margin: 5px; border-radius: 5px; display: inline-block; border: 1px solid #3498db; }
     </style>
 </head>
 <body>
 
-    <div id="lobby">
-        <div class="box">
-            <h2 id="room-title">Create Game</h2>
-            <p id="room-id-display" style="color: #bdc3c7;"></p>
-            <input type="text" id="username" class="input" placeholder="Your Name...">
-            <button class="btn" id="main-btn" onclick="handleJoin()">Start / Join Game</button>
-            <div id="wait-msg" style="margin-top: 15px; font-size: 13px; display: none;">Waiting for teammates...</div>
+    <div class="card-box">
+        <h2 id="title">Initializing...</h2>
+        <div id="lobby-ui" style="display: none;">
+            <input type="text" id="username" class="input" placeholder="Enter Your Name">
+            <button class="btn" onclick="joinRoom()">Join Game</button>
+            
+            <div id="share-section" style="display: none;">
+                <p>Share this link with 3 friends:</p>
+                <div class="share-link" id="link-box" onclick="copyLink()">Click to Copy Link</div>
+            </div>
+
+            <div id="player-list-section" style="margin-top: 20px;">
+                <h4>Players Joined (Wait for 4):</h4>
+                <div id="player-display"></div>
+            </div>
         </div>
     </div>
-
-    <div id="game-ui">
-        <div class="player-list" id="player-tags"></div>
-        <div style="text-align: center;">
-            <div id="status-update">Room Connected! Voice is active.</div>
-            <button class="btn" style="width: auto;" onclick="copyInvite()">Copy Invite Link</button>
-        </div>
-        </div>
 
 <script>
     // --- SUPABASE CONFIG ---
@@ -49,101 +40,97 @@
     const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
     let roomID = new URLSearchParams(window.location.search).get('room');
-    const lobby = document.getElementById('lobby');
-    const title = document.getElementById('room-title');
-    const roomIdDisp = document.getElementById('room-id-display');
+    let myName = "";
 
-    // 1. Setup Room ID
-    if (roomID) {
-        title.innerText = "Join Team Room";
-        roomIdDisp.innerText = `Room: ${roomID}`;
-    } else {
-        roomID = "ROOM-" + Math.random().toString(36).substring(2, 7).toUpperCase();
-        window.history.pushState({}, '', `?room=${roomID}`);
-        roomIdDisp.innerText = `New Room: ${roomID}`;
+    // 1. Initial Load: Check if we need to generate a link
+    async function init() {
+        if (!roomID) {
+            // Generate a random ID
+            roomID = "GAME-" + Math.random().toString(36).substring(2, 7).toUpperCase();
+            // Update URL without refreshing
+            const newURL = window.location.origin + window.location.pathname + '?room=' + roomID;
+            window.history.pushState({ path: newURL }, '', newURL);
+            
+            document.getElementById('title').innerText = "Create New Game";
+        } else {
+            document.getElementById('title').innerText = "Joining Game Room";
+        }
+        
+        document.getElementById('lobby-ui').style.display = "block";
+        document.getElementById('link-box').innerText = window.location.href;
+        document.getElementById('share-section').style.display = "block";
+
+        // Start listening for other players
+        listenForChanges();
     }
 
-    // 2. Joining Logic
-    async function handleJoin() {
-        const name = document.getElementById('username').value;
-        if (!name) return alert("Enter your name!");
+    // 2. Join the Database
+    async function joinRoom() {
+        myName = document.getElementById('username').value;
+        if (!myName) return alert("Please enter a name");
 
-        // Add player to Supabase table
-        const { data: room } = await supabase.from('rooms').select('*').eq('id', roomID).single();
-
-        let players = room ? room.players : [];
+        // Get existing players
+        const { data: room } = await supabase.from('rooms').select('players').eq('id', roomID).single();
         
-        if (players.length >= 4) return alert("Room is full!");
-        if (players.includes(name)) return alert("Name already taken!");
+        let currentPlayers = room ? room.players : [];
 
-        players.push(name);
+        if (currentPlayers.length >= 4) return alert("Room is full!");
+        if (currentPlayers.includes(myName)) return alert("Name already joined!");
+
+        currentPlayers.push(myName);
 
         if (!room) {
-            // Create the room
-            await supabase.from('rooms').insert([{ id: roomID, players: players, game_state: {} }]);
+            // Room doesn't exist in DB yet, create it
+            await supabase.from('rooms').insert([{ id: roomID, players: currentPlayers }]);
         } else {
-            // Update the room
-            await supabase.from('rooms').update({ players: players }).eq('id', roomID);
+            // Room exists, add my name
+            await supabase.from('rooms').update({ players: currentPlayers }).eq('id', roomID);
         }
 
-        document.getElementById('main-btn').style.display = "none";
-        document.getElementById('wait-msg').style.display = "block";
-        
-        startRealtimeWatcher(name);
+        document.getElementById('username').disabled = true;
+        alert("You are in! Wait for others to join.");
     }
 
-    // 3. Realtime Watcher
-    function startRealtimeWatcher(myName) {
+    // 3. Realtime Listener
+    function listenForChanges() {
         supabase
-            .channel('room-updates')
+            .channel('room_updates')
             .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'rooms', filter: `id=eq.${roomID}` }, payload => {
-                updateLobby(payload.new.players, myName);
+                renderPlayers(payload.new.players);
+            })
+            .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'rooms', filter: `id=eq.${roomID}` }, payload => {
+                renderPlayers(payload.new.players);
             })
             .subscribe();
-
-        // Check current status immediately
-        checkCurrentPlayers(myName);
+            
+        // Initial check
+        refreshPlayerList();
     }
 
-    async function checkCurrentPlayers(myName) {
+    async function refreshPlayerList() {
         const { data } = await supabase.from('rooms').select('players').eq('id', roomID).single();
-        if (data) updateLobby(data.players, myName);
+        if (data) renderPlayers(data.players);
     }
 
-    function updateLobby(players, myName) {
-        const tagContainer = document.getElementById('player-tags');
-        tagContainer.innerHTML = "";
-        players.forEach(p => {
-            tagContainer.innerHTML += `<div class="p-tag">${p} ${p === myName ? '(You)' : ''}</div>`;
+    function renderPlayers(list) {
+        const display = document.getElementById('player-display');
+        display.innerHTML = "";
+        list.forEach(p => {
+            display.innerHTML += `<div class="player-tag">${p}</div>`;
         });
 
-        if (players.length === 4) {
-            lobby.style.display = "none";
-            document.getElementById('game-ui').style.display = "flex";
-            initVoice(myName);
+        if (list.length === 4) {
+            document.body.innerHTML = `<h1>🎮 ALL PLAYERS JOINED!</h1><p>Starting Voice & Card Table...</p>`;
+            // Here you would trigger the start of your card game code
         }
     }
 
-    function copyInvite() {
+    function copyLink() {
         navigator.clipboard.writeText(window.location.href);
-        alert("Link Copied! Send to 3 friends.");
+        alert("Link copied! Send it to your teammates.");
     }
 
-    // 4. Voice Call (PeerJS)
-    function initVoice(myName) {
-        const peer = new Peer(`${roomID}-${myName.replace(/\s+/g, '')}`);
-        navigator.mediaDevices.getUserMedia({ audio: true }).then(stream => {
-            peer.on('call', call => {
-                call.answer(stream);
-                call.on('stream', remoteStream => {
-                    const audio = document.createElement('audio');
-                    audio.srcObject = remoteStream;
-                    audio.play();
-                });
-            });
-            // Logic to call others would be added here based on player list
-        });
-    }
+    init();
 </script>
 </body>
 </html>
