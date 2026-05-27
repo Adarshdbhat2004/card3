@@ -1,515 +1,110 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Online 4 Player Card Game</title>
-
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-
-<style>
-body{
-    margin:0;
-    font-family:Arial;
-    background:#111827;
-    color:white;
-}
-
-.top{
-    padding:15px;
-    background:#1f2937;
-    display:flex;
-    justify-content:space-between;
-    align-items:center;
-    flex-wrap:wrap;
-    gap:10px;
-}
-
-input,button{
-    padding:10px;
-    border:none;
-    border-radius:8px;
-    font-size:15px;
-}
-
-button{
-    cursor:pointer;
-    background:#2563eb;
-    color:white;
-}
-
-button:hover{
-    opacity:.9;
-}
-
-.main{
-    padding:20px;
-}
-
-.roomBox{
-    background:#1f2937;
-    padding:20px;
-    border-radius:10px;
-    margin-bottom:20px;
-}
-
-.players{
-    display:grid;
-    grid-template-columns:repeat(2,1fr);
-    gap:10px;
-    margin-top:20px;
-}
-
-.player{
-    background:#374151;
-    padding:15px;
-    border-radius:10px;
-    text-align:center;
-}
-
-.you{
-    border:3px solid #22c55e;
-}
-
-.cards{
-    display:flex;
-    flex-wrap:wrap;
-    gap:8px;
-    margin-top:20px;
-}
-
-.card{
-    background:white;
-    color:black;
-    padding:10px;
-    border-radius:8px;
-    min-width:45px;
-    text-align:center;
-    font-weight:bold;
-    cursor:pointer;
-}
-
-.red{
-    color:red;
-}
-
-.center{
-    margin-top:30px;
-    background:#1f2937;
-    padding:20px;
-    border-radius:10px;
-}
-
-.played{
-    display:flex;
-    gap:10px;
-    flex-wrap:wrap;
-}
-
-.status{
-    margin-top:15px;
-    font-size:18px;
-    color:#22c55e;
-}
-
-.turn{
-    color:yellow;
-}
-
-.hidden{
-    display:none;
-}
-</style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>4-Player Card Connect</title>
+    <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+    <style>
+        body { background: #1a252f; color: white; font-family: sans-serif; text-align: center; }
+        #table { 
+            display: grid; grid-template-areas: ". P3 ." "P2 . P4" ". P1 .";
+            width: 300px; height: 300px; margin: 50px auto; gap: 10px;
+        }
+        .slot { border: 2px dashed #555; display: flex; align-items: center; justify-content: center; border-radius: 10px; background: rgba(0,0,0,0.2); }
+        .card { width: 60px; height: 90px; background: white; color: black; border-radius: 5px; font-weight: bold; display: flex; align-items: center; justify-content: center; }
+        .btn { padding: 10px 20px; background: #3498db; color: white; border: none; border-radius: 5px; cursor: pointer; margin-top: 20px; }
+        .hidden { display: none; }
+    </style>
 </head>
 <body>
 
-<div class="top">
-    <div>
-        <h2>ONLINE 4 PLAYER CARD GAME</h2>
+    <div id="lobby">
+        <h1>Room: <span id="room-id-display">...</span></h1>
+        <p id="status">Waiting for players...</p>
+        <button id="join-btn" class="btn" onclick="joinGame()">Join as Player <span id="next-p">?</span></button>
+        <p>Share this link: <br> <small id="share-link"></small></p>
     </div>
 
-    <div>
-        <input id="playerName" placeholder="Your Name">
-        <input id="roomInput" placeholder="Room ID">
-        <button onclick="createRoom()">Create Room</button>
-        <button onclick="joinRoom()">Join Room</button>
+    <div id="game-ui" class="hidden">
+        <h2 id="role-display">You are Player X</h2>
+        <div id="table">
+            <div class="slot" style="grid-area: P3" id="slot-P3">P3</div>
+            <div class="slot" style="grid-area: P2" id="slot-P2">P2</div>
+            <div class="slot" style="grid-area: P4" id="slot-P4">P4</div>
+            <div class="slot" style="grid-area: P1" id="slot-P1">P1</div>
+        </div>
+        <button class="btn" onclick="playTestCard()">Throw Random Card</button>
     </div>
-</div>
-
-<div class="main">
-
-<div class="roomBox">
-    <h3>Room: <span id="roomText">-</span></h3>
-    <h3>You: <span id="youText">-</span></h3>
-    <h3>Player ID: <span id="playerIdText">-</span></h3>
-
-    <div class="players" id="playersBox"></div>
-
-    <button id="startBtn" class="hidden" onclick="startGame()">Start Game</button>
-</div>
-
-<div class="center">
-    <h3>Played Cards</h3>
-    <div class="played" id="playedCards"></div>
-
-    <div class="status" id="status">
-        Waiting...
-    </div>
-</div>
-
-<div class="center">
-    <h3>Your Cards</h3>
-    <div class="cards" id="myCards"></div>
-</div>
-
-</div>
 
 <script>
+    const S_URL = "https://pftbngrjxxkasossvhwm.supabase.co";
+    const S_KEY = "sb_publishable_EmdkxXEgX5XYcvPnKZjdMA_Ff8G9PdC";
+    const supabase = window.supabase.createClient(S_URL, S_KEY);
 
-const SUPABASE_URL = "https://pftbngrjxxkasossvhwm.supabase.co";
-const SUPABASE_KEY = "sb_publishable_EmdkxXEgX5XYcvPnKZjdMA_Ff8G9PdC";
-
-const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
-
-let roomId = "";
-let myId = "";
-let myName = "";
-let gameData = null;
-
-const SUITS = ["♠","♥","♦","♣"];
-const VALUES = ["7","8","9","10","J","Q","K","A"];
-
-function randomId(){
-    return Math.random().toString(36).substring(2,8);
-}
-
-async function createRoom(){
-
-    myName = document.getElementById("playerName").value.trim();
-
-    if(!myName){
-        alert("Enter player name");
-        return;
+    let roomID = new URLSearchParams(window.location.search).get('room');
+    if (!roomID) {
+        roomID = Math.random().toString(36).substring(7).toUpperCase();
+        window.history.pushState({}, '', `?room=${roomID}`);
     }
 
-    roomId = document.getElementById("roomInput").value.trim();
+    document.getElementById('room-id-display').innerText = roomID;
+    document.getElementById('share-link').innerText = window.location.href;
 
-    if(!roomId){
-        roomId = randomId();
-    }
+    let myRole = '';
+    let channel = supabase.channel(`room_${roomID}`, { config: { presence: { key: 'user' } } });
 
-    myId = "P1";
-
-    const room = {
-        room_id: roomId,
-        players: [
-            {
-                id:"P1",
-                name:myName
-            }
-        ],
-        host:"P1",
-        started:false,
-        turn:"P1",
-        hands:{},
-        played:[]
-    };
-
-    const {error} = await supabaseClient
-    .from("game_rooms")
-    .insert(room);
-
-    if(error){
-        alert(error.message);
-        return;
-    }
-
-    listenRoom();
-    loadRoom();
-
-    alert("Room Created");
-}
-
-async function joinRoom(){
-
-    myName = document.getElementById("playerName").value.trim();
-    roomId = document.getElementById("roomInput").value.trim();
-
-    if(!myName || !roomId){
-        alert("Enter details");
-        return;
-    }
-
-    const {data,error} = await supabaseClient
-    .from("game_rooms")
-    .select("*")
-    .eq("room_id",roomId)
-    .single();
-
-    if(error || !data){
-        alert("Room not found");
-        return;
-    }
-
-    if(data.players.length >= 4){
-        alert("Room Full");
-        return;
-    }
-
-    myId = "P" + (data.players.length + 1);
-
-    data.players.push({
-        id:myId,
-        name:myName
-    });
-
-    const {error:updateError} = await supabaseClient
-    .from("game_rooms")
-    .update({
-        players:data.players
+    channel
+    .on('presence', { event: 'sync' }, () => {
+        const state = channel.presenceState();
+        const players = Object.values(state).flat();
+        document.getElementById('next-p').innerText = players.length + 1;
+        document.getElementById('status').innerText = `Players: ${players.length} / 4`;
+        
+        if (players.length >= 4) {
+            document.getElementById('status').innerText = "Room Full! Ready to play.";
+        }
     })
-    .eq("room_id",roomId);
-
-    if(updateError){
-        alert(updateError.message);
-        return;
-    }
-
-    listenRoom();
-    loadRoom();
-}
-
-async function loadRoom(){
-
-    const {data} = await supabaseClient
-    .from("game_rooms")
-    .select("*")
-    .eq("room_id",roomId)
-    .single();
-
-    gameData = data;
-
-    render();
-}
-
-function render(){
-
-    document.getElementById("roomText").innerText = roomId;
-    document.getElementById("youText").innerText = myName;
-    document.getElementById("playerIdText").innerText = myId;
-
-    const playersBox = document.getElementById("playersBox");
-    playersBox.innerHTML = "";
-
-    gameData.players.forEach(player=>{
-
-        const div = document.createElement("div");
-
-        div.className = "player";
-
-        if(player.id === myId){
-            div.classList.add("you");
-        }
-
-        div.innerHTML = `
-            <h3>${player.name}</h3>
-            <p>${player.id}</p>
-        `;
-
-        playersBox.appendChild(div);
-    });
-
-    if(gameData.players.length === 4 && gameData.host === myId && !gameData.started){
-        document.getElementById("startBtn").classList.remove("hidden");
-    }
-
-    renderCards();
-    renderPlayed();
-
-    document.getElementById("status").innerHTML =
-    "Current Turn : <span class='turn'>" + gameData.turn + "</span>";
-}
-
-function createDeck(){
-
-    let deck = [];
-
-    for(let suit of SUITS){
-
-        for(let value of VALUES){
-
-            deck.push({
-                suit,
-                value
-            });
-
-        }
-
-    }
-
-    return deck;
-}
-
-function shuffle(array){
-
-    for(let i=array.length-1;i>0;i--){
-
-        const j = Math.floor(Math.random()*(i+1));
-
-        [array[i],array[j]] = [array[j],array[i]];
-    }
-
-}
-
-async function startGame(){
-
-    let deck = createDeck();
-
-    shuffle(deck);
-
-    let hands = {
-        P1:[],
-        P2:[],
-        P3:[],
-        P4:[]
-    };
-
-    for(let i=0;i<8;i++){
-
-        hands.P1.push(deck.pop());
-        hands.P2.push(deck.pop());
-        hands.P3.push(deck.pop());
-        hands.P4.push(deck.pop());
-
-    }
-
-    await supabaseClient
-    .from("game_rooms")
-    .update({
-        started:true,
-        hands:hands,
-        played:[],
-        turn:"P1"
+    .on('broadcast', { event: 'play' }, (payload) => {
+        renderCardOnTable(payload.payload.role, payload.payload.card);
     })
-    .eq("room_id",roomId);
-}
-
-function renderCards(){
-
-    const myCards = document.getElementById("myCards");
-
-    myCards.innerHTML = "";
-
-    if(!gameData.hands || !gameData.hands[myId]) return;
-
-    gameData.hands[myId].forEach((card,index)=>{
-
-        const div = document.createElement("div");
-
-        div.className = "card";
-
-        if(card.suit==="♥" || card.suit==="♦"){
-            div.classList.add("red");
-        }
-
-        div.innerText = card.value + card.suit;
-
-        div.onclick = ()=>playCard(index);
-
-        myCards.appendChild(div);
-
-    });
-
-}
-
-function renderPlayed(){
-
-    const playedCards = document.getElementById("playedCards");
-
-    playedCards.innerHTML = "";
-
-    gameData.played.forEach(item=>{
-
-        const div = document.createElement("div");
-
-        div.className = "card";
-
-        if(item.card.suit==="♥" || item.card.suit==="♦"){
-            div.classList.add("red");
-        }
-
-        div.innerHTML = `
-            ${item.card.value}${item.card.suit}
-            <br>
-            <small>${item.player}</small>
-        `;
-
-        playedCards.appendChild(div);
-
-    });
-
-}
-
-async function playCard(index){
-
-    if(gameData.turn !== myId){
-        alert("Not your turn");
-        return;
-    }
-
-    const hand = gameData.hands[myId];
-
-    const card = hand[index];
-
-    hand.splice(index,1);
-
-    gameData.played.push({
-        player:myId,
-        card:card
-    });
-
-    const nextTurn = getNextPlayer(myId);
-
-    await supabaseClient
-    .from("game_rooms")
-    .update({
-        hands:gameData.hands,
-        played:gameData.played,
-        turn:nextTurn
-    })
-    .eq("room_id",roomId);
-}
-
-function getNextPlayer(id){
-
-    if(id==="P1") return "P2";
-    if(id==="P2") return "P3";
-    if(id==="P3") return "P4";
-    return "P1";
-}
-
-function listenRoom(){
-
-    supabaseClient
-    .channel("room-"+roomId)
-    .on(
-        "postgres_changes",
-        {
-            event:"UPDATE",
-            schema:"public",
-            table:"game_rooms",
-            filter:`room_id=eq.${roomId}`
-        },
-        payload=>{
-            gameData = payload.new;
-            render();
-        }
-    )
     .subscribe();
 
-}
+    async function joinGame() {
+        const state = channel.presenceState();
+        const count = Object.values(state).flat().length;
+        
+        if (count >= 4) return alert("Room full!");
+        
+        myRole = `P${count + 1}`;
+        await channel.track({ role: myRole });
 
+        document.getElementById('lobby').classList.add('hidden');
+        document.getElementById('game-ui').classList.remove('hidden');
+        document.getElementById('role-display').innerText = `You are ${myRole}`;
+    }
+
+    function playTestCard() {
+        const suits = ['♠','♣','♥','♦'];
+        const val = ['A','K','Q','J','10'][Math.floor(Math.random()*5)];
+        const suit = suits[Math.floor(Math.random()*4)];
+        const card = { val, suit };
+
+        // Send to everyone else
+        channel.send({
+            type: 'broadcast',
+            event: 'play',
+            payload: { role: myRole, card: card }
+        });
+
+        // Show on my screen
+        renderCardOnTable(myRole, card);
+    }
+
+    function renderCardOnTable(role, card) {
+        const slot = document.getElementById(`slot-${role}`);
+        slot.innerHTML = `<div class="card">${card.val}${card.suit}</div>`;
+    }
 </script>
-
 </body>
 </html>
