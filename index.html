@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Multiplayer Card Game - Connection Hub</title>
+    <title>Multiplayer Card Game - Active Core</title>
 
     <!-- Supabase JS CDN Library -->
     <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
@@ -15,91 +15,153 @@
             --accent-color: #f1c40f;
             --blue-btn: #3498db;
             --green-btn: #2ecc71;
+            --red-btn: #e74c3c;
         }
 
         body {
             margin: 0; padding: 0;
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
             background: var(--bg-color); color: white;
-            display: flex; justify-content: center; align-items: center; height: 100vh;
+            -webkit-tap-highlight-color: transparent;
         }
 
+        /* Lobby overlay screen configuration */
         #setup-screen {
-            background: var(--panel-color);
+            position: fixed; inset: 0;
+            background: var(--bg-color);
             display: flex; flex-direction: column;
             justify-content: center; align-items: center;
-            gap: 15px; padding: 30px; text-align: center; 
-            border-radius: 12px; box-shadow: 0 4px 10px rgba(0,0,0,0.3);
-            width: 90%; max-width: 400px;
+            gap: 15px; padding: 20px; text-align: center; z-index: 100;
         }
 
         .btn {
             padding: 14px 24px; border: none; border-radius: 8px;
             cursor: pointer; font-weight: bold; font-size: 16px;
             text-transform: uppercase; letter-spacing: 0.5px;
-            transition: transform 0.1s ease; width: 100%; box-sizing: border-box;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.2);
+            transition: transform 0.1s ease;
         }
         .btn:active { transform: scale(0.96); }
         .btn-green { background: var(--green-btn); color: white; }
         .btn-blue { background: var(--blue-btn); color: white; }
+        .btn-red { background: var(--red-btn); color: white; }
 
         #room-url-input {
-            width: 100%; padding: 12px; border-radius: 6px; 
-            border: 2px solid var(--blue-btn); background: #2c3e50; 
-            color: white; text-align: center; font-size: 14px; box-sizing: border-box;
+            width: 85%; max-width: 320px; padding: 12px;
+            border-radius: 6px; border: 2px solid var(--blue-btn);
+            background: #2c3e50; color: white; text-align: center;
+            font-size: 14px; margin-bottom: 10px;
         }
 
-        #status-text { color: var(--accent-color); font-weight: bold; margin-top: 15px; font-size: 16px; }
-        .player-badge { background: #2c3e50; padding: 5px 10px; border-radius: 4px; margin: 2px; display: inline-block; font-size: 12px;}
+        #status-text { color: var(--accent-color); font-weight: bold; text-align: center; font-size: 16px; margin: 5px 0; }
+        .player-badge { background: #34495e; padding: 6px 12px; border-radius: 20px; margin: 4px; display: inline-block; font-size: 14px; border: 1px solid rgba(255,255,255,0.2); }
+
+        /* Gameplay Arena layouts Layout */
+        #main-game-container { display: none; padding: 15px; max-width: 600px; margin: 0 auto; }
+        .panel { background: var(--panel-color); padding: 15px; border-radius: 12px; margin-bottom: 15px; box-shadow: 0 4px 10px rgba(0,0,0,0.2); }
+        
+        #table-arena {
+            display: grid; grid-template-columns: repeat(auto-fit, minmax(100px, 1fr)); gap: 10px; margin: 15px 0;
+        }
+        .slot-box { background: rgba(0,0,0,0.2); padding: 10px; border-radius: 8px; text-align: center; min-height: 140px; }
+        .slot-box h4 { margin: 0 0 8px 0; font-size: 13px; color: #bdc3c7; }
+        
+        .card-placeholder {
+            width: 70px; height: 100px; border: 2px dashed rgba(255,255,255,0.3); margin: 0 auto;
+            border-radius: 6px; display: flex; justify-content: center; align-items: center; font-weight: bold;
+        }
+        .active-card {
+            width: 70px; height: 100px; background: white; color: black; border-radius: 6px;
+            margin: 0 auto; display: flex; flex-direction: column; justify-content: center; align-items: center;
+            font-size: 20px; font-weight: bold; box-shadow: 0 4px 8px rgba(0,0,0,0.4);
+        }
+        .red { color: var(--red-btn); }
+        .black { color: #2c3e50; }
+
+        .hand-container { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; margin-top: 10px; }
+        .playable-card {
+            width: 65px; height: 95px; background: white; color: black; border-radius: 6px;
+            display: flex; flex-direction: column; justify-content: center; align-items: center;
+            font-size: 18px; font-weight: bold; cursor: pointer; box-shadow: 0 3px 6px rgba(0,0,0,0.3);
+        }
+        .playable-card.disabled { opacity: 0.4; pointer-events: none; }
     </style>
 </head>
 
 <body>
 
+<!-- LOBBY HUB OVERLAY -->
 <div id="setup-screen">
     <h1>Card Match Lobby</h1>
-    <p style="color:#bdc3c7; margin:-5px 0 10px 0;">Create a game room or join via a shared link (Up to 5 players total).</p>
+    <p style="color:#bdc3c7; max-width:300px; margin:-5px 0 10px 0;">Create a room, send the link, and hit start once your team connects.</p>
     
     <button id="btn-create-room" class="btn btn-green">Create Game Room</button>
     
     <div id="share-link-box" style="display:none; width: 100%;">
-        <input type="text" id="room-url-input" readonly style="margin-bottom: 10px;">
+        <input type="text" id="room-url-input" readonly><br>
         <button id="btn-copy-link" class="btn btn-blue">Copy Link & Send</button>
     </div>
 
-    <p id="status-text">Initializing Server Core...</p>
+    <p id="status-text">Connecting to Server Core...</p>
     <div id="connected-players-list"></div>
+    
+    <!-- Action control visible exclusively to room host -->
+    <button id="btn-start-match" class="btn btn-green" style="display: none; margin-top: 15px; width: 85%; max-width: 320px;">Start Live Match</button>
+</div>
+
+<!-- CENTRAL GAMEPLAY FIELD (Reveals after start broadcast hits) -->
+<div id="main-game-container">
+    <div class="panel">
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+            <h2 style="margin: 0; font-size: 18px;" id="identity-header">Playing Arena</h2>
+            <div style="background: var(--accent-color); color: black; padding: 4px 10px; border-radius: 12px; font-size: 12px; font-weight: bold;">TRUMP: ♠</div>
+        </div>
+        <p id="game-live-status" style="margin: 10px 0 0 0; color: var(--accent-color); font-size: 14px; font-weight: bold;">Waiting for players to deal...</p>
+    </div>
+
+    <!-- The Play Table -->
+    <div id="table-arena"></div>
+
+    <!-- User Assets panel -->
+    <div class="panel">
+        <h3 style="margin: 0 0 10px 0; font-size: 15px; color: #bdc3c7;">Your Deck Hand Assets</h3>
+        <div id="my-hand-deck" class="hand-container"></div>
+    </div>
 </div>
 
 <script>
 /* =========================
-   SUPABASE CONNECTION CORNER
+   SUPABASE SERVICE ENGINE
 ========================= */
 const SUPABASE_URL = "https://pftbngrjxxkasossvhwm.supabase.co";
 const SUPABASE_KEY = "sb_publishable_EmdkxXEgX5XYcvPnKZjdMA_Ff8G9PdC";
 const client = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-/* =========================
-   ROOM & LOBBY CONFIGURATION
-========================= */
 let roomID = new URLSearchParams(window.location.search).get('room');
 let myRole = ''; 
 let channel = null;
-let connectedPlayers = {};
+
+// Mock cards data structures for immediate rendering deployment
+let localHandAssets = [
+    { value: 'A', suit: '♠', color: 'black' },
+    { value: '10', suit: '♦', color: 'red' },
+    { value: 'K', suit: '♥', color: 'red' },
+    { value: 'J', suit: '♣', color: 'black' }
+];
+let tableState = {};
+let turnSequence = 'Player 1';
 
 window.addEventListener('DOMContentLoaded', () => {
     if (roomID) {
-        // If a room parameter exists in the URL, this user is a joining player
         document.getElementById('btn-create-room').style.display = 'none';
         initRealtimeEngine();
     } else {
-        // If no room parameter exists, this user is the Host (Player 1)
         document.getElementById('btn-create-room').addEventListener('click', generateRoom);
     }
     document.getElementById('btn-copy-link').addEventListener('click', copyRoomLink);
+    document.getElementById('btn-start-match').addEventListener('click', broadcastMatchStart);
 });
 
-// Host generates a unique room ID
 function generateRoom() {
     roomID = Math.random().toString(36).substring(2, 9);
     myRole = 'Player 1';
@@ -116,74 +178,170 @@ function copyRoomLink() {
     const input = document.getElementById('room-url-input');
     input.select();
     navigator.clipboard.writeText(input.value);
-    alert("Match Room join link copied to clipboard! Share it with 4 friends.");
+    alert("Lobby entry link copied to clipboard!");
 }
 
 /* =========================
-   SUPABASE REALTIME HUB
+   REALTIME PRESENCE LOGIC
 ========================= */
 function initRealtimeEngine() {
-    channel = client.channel(`room-${roomID}`, {
-        config: {
-            presence: {
-                key: myRole || 'Assigning...'
-            }
-        }
-    });
+    channel = client.channel(`room-${roomID}`);
 
     channel
     .on('presence', { event: 'sync' }, () => {
-        const newState = channel.presenceState();
-        updateLobbyList(newState);
+        const presenceState = channel.presenceState();
+        updateLobbyUI(presenceState);
     })
-    .on('presence', { event: 'join' }, ({ key, currentPresences }) => {
-        console.log(`${key} joined the lobby`);
+    .on('broadcast', { event: 'start-game-signal' }, () => {
+        launchPlayFieldArena();
     })
-    .on('presence', { event: 'leave' }, ({ key, leftPresences }) => {
-        console.log(`${key} left the lobby`);
+    .on('broadcast', { event: 'card-dropped' }, ({ payload }) => {
+        syncTableCardPlacement(payload.player, payload.card, payload.nextTurn);
     })
     .subscribe(async (status) => {
         if (status === 'SUBSCRIBED') {
-            
-            // If myRole wasn't designated as Host (Player 1), calculate user's sequence number dynamically
             if (!myRole) {
-                const currentPresenceData = channel.presenceState();
-                const count = Object.keys(currentPresenceData).length;
-                
-                // Block entry if there are already 5 players in the channel
-                if (count >= 5) {
-                    document.getElementById('status-text').innerText = "Room Full! Maximum 5 players reached.";
+                const presenceState = channel.presenceState();
+                const totalInRoom = Object.keys(presenceState).length;
+                if (totalInRoom >= 5) {
+                    document.getElementById('status-text').innerText = "Lobby is full! Limit 5 players.";
                     channel.unsubscribe();
                     return;
                 }
-                myRole = `Player ${count + 1}`;
+                myRole = `Player ${totalInRoom + 1}`;
             }
 
-            document.getElementById('status-text').innerText = `Connected as ${myRole}!`;
-
-            // Track this player's presence state across the shared Supabase channel
-            await channel.track({
-                user: myRole,
-                joinedAt: new Date().toISOString()
-            });
+            document.getElementById('status-text').innerText = `Syncing Profile: ${myRole}...`;
+            await channel.track({ user: myRole });
         }
     });
 }
 
-function updateLobbyList(presenceState) {
+function updateLobbyUI(presenceState) {
     const listContainer = document.getElementById('connected-players-list');
     listContainer.innerHTML = '';
     
-    const activePlayers = Object.keys(presenceState);
-    
-    document.getElementById('status-text').innerText = `Lobby Active (${activePlayers.length}/5 Players)`;
+    const elements = Object.keys(presenceState);
+    document.getElementById('status-text').innerText = `Lobby Active (${elements.length}/5 Players)`;
 
-    activePlayers.forEach(playerKey => {
+    elements.forEach(key => {
         const badge = document.createElement('span');
         badge.className = 'player-badge';
-        badge.innerText = playerKey;
+        badge.innerText = key;
         listContainer.appendChild(badge);
     });
+
+    // Only display start button to Player 1 if other users are inside the connection ring
+    if (myRole === 'Player 1' && elements.length >= 2) {
+        document.getElementById('btn-start-match').style.display = 'block';
+    } else {
+        document.getElementById('btn-start-match').style.display = 'none';
+    }
+}
+
+/* =========================
+   MATCHMAKING TRANSMISSION
+========================= */
+function broadcastMatchStart() {
+    channel.send({
+        type: 'broadcast',
+        event: 'start-game-signal',
+        payload: {}
+    });
+    launchPlayFieldArena();
+}
+
+function launchPlayFieldArena() {
+    document.getElementById('setup-screen').style.display = 'none';
+    document.getElementById('main-game-container').style.display = 'block';
+    document.getElementById('identity-header').innerText = `Arena Arena - ${myRole}`;
+    
+    // Build slots dynamically depending on active lobby members configuration
+    const totalActive = Object.keys(channel.presenceState());
+    const tableContainer = document.getElementById('table-arena');
+    tableContainer.innerHTML = '';
+
+    totalActive.forEach(pName => {
+        tableState[pName] = null;
+        const div = document.createElement('div');
+        div.className = 'slot-box';
+        div.id = `mat-slot-${pName.replace(' ', '')}`;
+        div.innerHTML = `<h4>${pName === myRole ? 'You' : pName}</h4><div class="card-placeholder" id="placeholder-${pName.replace(' ', '')}">?</div>`;
+        tableContainer.appendChild(div);
+    });
+
+    refreshTurnIndicators();
+}
+
+/* =========================
+   CORE INTERACTIVE LOGIC
+========================= */
+function refreshTurnIndicators() {
+    const banner = document.getElementById('game-live-status');
+    if (turnSequence === myRole) {
+        banner.innerText = "YOUR TURN! Throw down a hand asset card onto the mat.";
+    } else {
+        banner.innerText = `Waiting for ${turnSequence} to place their card...`;
+    }
+
+    const handContainer = document.getElementById('my-hand-deck');
+    handContainer.innerHTML = '';
+
+    localHandAssets.forEach((card, index) => {
+        const element = document.createElement('div');
+        element.className = `playable-card ${card.color}`;
+        if (turnSequence !== myRole) element.classList.add('disabled');
+        
+        element.innerHTML = `<div>${card.value}${card.suit}</div>`;
+        element.onclick = () => dropCardOnTable(index);
+        handContainer.appendChild(element);
+    });
+}
+
+function dropCardOnTable(index) {
+    if (turnSequence !== myRole) return;
+    
+    const cardSelected = localHandAssets.splice(index, 1)[0];
+    
+    // Calculate who plays next sequentially
+    const totalActive = Object.keys(channel.presenceState());
+    const myIdx = totalActive.indexOf(myRole);
+    const nextIdx = (myIdx + 1) % totalActive.length;
+    const nextPlayer = totalActive[nextIdx];
+
+    channel.send({
+        type: 'broadcast',
+        event: 'card-dropped',
+        payload: { player: myRole, card: cardSelected, nextTurn: nextPlayer }
+    });
+
+    syncTableCardPlacement(myRole, cardSelected, nextPlayer);
+}
+
+function syncTableCardPlacement(player, card, nextTurn) {
+    tableState[player] = card;
+    const placeholder = document.getElementById(`placeholder-${player.replace(' ', '')}`);
+    if (placeholder) {
+        placeholder.parentElement.innerHTML = `<h4>${player === myRole ? 'You' : player}</h4>
+            <div class="active-card ${card.color}">${card.value}${card.suit}</div>`;
+    }
+
+    // Advance turn tracking configurations
+    turnSequence = nextTurn;
+    
+    // Reset round table once everyone plays
+    const totalActive = Object.keys(channel.presenceState());
+    const allPlayed = totalActive.every(p => tableState[p] !== null);
+    
+    if (allPlayed) {
+        document.getElementById('game-live-status').innerText = "Trick Complete! Clearing board panel arena...";
+        setTimeout(() => {
+            totalActive.forEach(p => tableState[p] = null);
+            launchPlayFieldArena(); 
+        }, 3000);
+    } else {
+        refreshTurnIndicators();
+    }
 }
 </script>
 
