@@ -3,12 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>4-Player Card Game - Supabase Voice Edition</title>
-
-    <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
-    
-    <script src="https://unpkg.com/peerjs@1.4.7/dist/peerjs.min.js"></script>
-
+    <title>4-Player Instant Link Card Game</title>
+    <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
     <style>
         :root {
             --bg-color: #1a252f;
@@ -17,48 +13,42 @@
             --blue-btn: #3498db;
             --green-btn: #2ecc71;
             --red-btn: #e74c3c;
-            --purple-btn: #9b59b6;
         }
 
         body {
             margin: 0; padding: 0;
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
             background: var(--bg-color); color: white;
-            -webkit-tap-highlight-color: transparent;
             touch-action: manipulation;
         }
 
-        #setup-screen {
-            position: fixed; inset: 0;
-            background: var(--bg-color);
-            display: flex; flex-direction: column;
-            justify-content: center; align-items: center;
+        #lobby-screen {
+            position: fixed; inset: 0; background: var(--bg-color);
+            display: flex; flex-direction: column; justify-content: center; align-items: center;
             gap: 15px; padding: 20px; text-align: center; z-index: 100;
         }
 
         .btn {
-            padding: 14px 24px; border: none; border-radius: 8px;
+            padding: 14px 28px; border: none; border-radius: 8px;
             cursor: pointer; font-weight: bold; font-size: 16px;
-            text-transform: uppercase; letter-spacing: 0.5px;
-            box-shadow: 0 4px 6px rgba(0,0,0,0.2);
-            transition: transform 0.1s ease, opacity 0.2s;
+            text-transform: uppercase; box-shadow: 0 4px 6px rgba(0,0,0,0.2);
+            transition: transform 0.1s, opacity 0.2s;
         }
         .btn:active { transform: scale(0.96); }
         .btn-green { background: var(--green-btn); color: white; }
         .btn-blue { background: var(--blue-btn); color: white; }
         .btn-red { background: var(--red-btn); color: white; }
-        .btn-purple { background: var(--purple-btn); color: white; }
-        .btn-suit { background: white; color: black; font-size: 24px; padding: 15px 25px; margin: 8px; border-radius: 10px; }
+        .btn-suit { background: white; color: black; font-size: 22px; padding: 12px 20px; margin: 5px; border-radius: 8px; }
 
-        #room-url-input {
-            width: 85%; max-width: 320px; padding: 12px;
-            border-radius: 6px; border: 2px solid var(--blue-btn);
-            background: #2c3e50; color: white; text-align: center;
-            font-size: 14px; margin-bottom: 10px;
+        .link-box {
+            background: rgba(0,0,0,0.4); padding: 12px; border-radius: 8px;
+            border: 1px dashed var(--accent-color); font-family: monospace;
+            font-size: 14px; max-width: 90%; word-break: break-all; margin: 10px 0;
+            color: #2ecc71; cursor: pointer;
         }
 
-        #main-container {
-            display: flex; flex-direction: column;
+        #main-game-container {
+            display: none; flex-direction: column;
             padding: 10px; max-width: 700px; margin: 0 auto; box-sizing: border-box;
         }
 
@@ -70,883 +60,610 @@
 
         .score-board {
             display: flex; justify-content: space-around; align-items: center;
-            font-size: 1.1rem; font-weight: bold; padding-bottom: 4px;
+            font-size: 1.1rem; font-weight: bold;
         }
 
-        .trump-reveal-box {
+        .trump-badge {
             background: var(--accent-color); color: black;
-            padding: 4px 14px; border-radius: 20px; font-size: 14px; font-weight: bold;
+            padding: 4px 12px; border-radius: 20px; font-size: 14px;
         }
 
-        .voice-control-bar {
-            display: flex; justify-content: space-between; align-items: center;
-            background: #2c3e50; border-radius: 8px; padding: 8px 12px; margin-bottom: 10px;
-        }
-        .voice-dot { width: 10px; height: 10px; background: #95a5a6; border-radius: 50%; display: inline-block; margin-right: 6px; }
-        .voice-dot.connected { background: var(--green-btn); box-shadow: 0 0 8px var(--green-btn); }
-
-        /* 4-Player Square Layout Table Map */
-        #table {
+        #table-mat {
             display: grid;
             grid-template-areas: 
                 ". opp2 ."
                 "opp1 . opp3"
                 ". my .";
             grid-template-columns: 1fr 1fr 1fr;
-            gap: 10px; margin: 10px 0;
-            background: rgba(0,0,0,0.2);
-            padding: 15px; border-radius: 15px;
+            gap: 10px; margin: 15px 0;
+            background: rgba(0,0,0,0.3); padding: 15px; border-radius: 15px;
         }
-        .table-slot-container {
-            background: rgba(0,0,0,0.15); padding: 8px; border-radius: 10px; text-align: center;
-        }
-        .table-slot-container h4 { margin: 0 0 6px 0; font-size: 12px; opacity: 0.9; }
         
-        #slot-container-p1 { grid-area: my; }
-        #slot-container-p2 { grid-area: opp1; }
-        #slot-container-p3 { grid-area: opp2; }
-        #slot-container-p4 { grid-area: opp3; }
+        .mat-slot {
+            background: rgba(0,0,0,0.2); padding: 8px; border-radius: 10px; text-align: center;
+        }
+        .mat-slot h4 { margin: 0 0 5px 0; font-size: 12px; color: #bdc3c7; }
+        
+        #slot-P1 { grid-area: my; }
+        #slot-P2 { grid-area: opp1; }
+        #slot-P3 { grid-area: opp2; }
+        #slot-P4 { grid-area: opp3; }
 
-        .slot {
-            width: 70px; height: 100px; border: 2px dashed rgba(255,255,255,0.3);
-            margin: 0 auto; display: flex; justify-content: center;
-            align-items: center; border-radius: 8px; background: rgba(0,0,0,0.1);
+        .card-placeholder {
+            width: 65px; height: 95px; border: 2px dashed rgba(255,255,255,0.2);
+            margin: 0 auto; display: flex; justify-content: center; align-items: center; border-radius: 8px;
         }
 
         .hand-container {
-            display: flex; gap: 6px; justify-content: center;
-            flex-wrap: wrap; margin-top: 10px; min-height: 105px;
+            display: flex; gap: 6px; justify-content: center; flex-wrap: wrap; min-height: 100px;
         }
 
         .card {
-            width: 70px; height: 100px; background: white; color: black;
+            width: 65px; height: 95px; background: white; color: black;
             border-radius: 8px; display: flex; flex-direction: column;
-            justify-content: space-between; padding: 8px; box-sizing: border-box;
-            font-size: 18px; cursor: pointer; font-weight: bold;
-            box-shadow: 0 4px 8px rgba(0,0,0,0.3); position: relative;
-            user-select: none; -webkit-user-select: none;
+            justify-content: space-between; padding: 6px; box-sizing: border-box;
+            font-size: 16px; cursor: pointer; font-weight: bold;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.3); user-select: none;
         }
-        .card .card-top { align-self: flex-start; line-height: 1; }
-        .card .card-suit { align-self: center; font-size: 24px; line-height: 1; }
-        .card .card-bottom { align-self: flex-end; line-height: 1; transform: rotate(180deg); }
-        .card.disabled { opacity: 0.35; cursor: not-allowed; pointer-events: none; transform: scale(0.95); }
+        .card .suit-center { align-self: center; font-size: 22px; }
+        .card .val-bottom { transform: rotate(180deg); align-self: flex-end; }
+        .card.disabled { opacity: 0.4; cursor: not-allowed; pointer-events: none; }
         
         .red { color: #e74c3c; }
         .black { color: #2c3e50; }
 
-        .modal-step {
-            display: none; background: #2c3e50;
-            border: 2px solid var(--accent-color);
-            border-radius: 12px; padding: 15px; margin: 10px 0;
-            text-align: center; box-shadow: 0 6px 15px rgba(0,0,0,0.4);
+        .voting-modal {
+            display: none; background: #2c3e50; border: 2px solid var(--accent-color);
+            border-radius: 12px; padding: 15px; margin: 10px 0; text-align: center;
         }
-        .modal-step h3 { margin-top: 0; font-size: 18px; color: white; }
-        .modal-step p { font-size: 13px; color: #bdc3c7; margin: 5px 0 15px 0; }
-        .vote-status-indicator { font-size: 13px; margin: 10px 0; font-weight: bold; color: var(--accent-color); line-height: 1.5; }
-
-        .active-turn { border: 2px solid var(--accent-color); background: rgba(241,196,15,0.04); }
-        .error-msg { color: var(--red-btn); font-size: 13px; margin-top: 8px; font-weight: bold; display: none; }
-
-        #chat-messages {
-            height: 90px; overflow-y: auto; background: #2c3e50;
-            padding: 8px; border-radius: 8px; margin-top: 8px; font-size: 13px;
-        }
-        .msg { margin-bottom: 4px; line-height: 1.3; }
-        .chat-input-row { display: flex; gap: 8px; margin-top: 8px; }
-        #chat-input { flex: 1; padding: 12px; border-radius: 8px; border: none; font-size: 14px; }
-        
-        #status-text { color: var(--accent-color); font-weight: bold; text-align: center; margin: 0; font-size: 15px; }
+        .vote-tracker { font-size: 13px; margin: 10px 0; font-weight: bold; color: var(--accent-color); }
+        .active-turn-highlight { border: 2px solid var(--accent-color); background: rgba(241,196,15,0.05); }
+        #network-status { color: var(--accent-color); font-weight: bold; text-align: center; margin: 0; }
     </style>
 </head>
-
 <body>
 
-<div id="setup-screen">
-    <h1>4-Player Card Match</h1>
-    <p id="setup-instruction-text" style="color:#bdc3c7; max-width:280px; margin:-5px 0 10px 0;">Create a game room or join via shared link to play live.</p>
-    <button id="btn-create-room" class="btn btn-green">Create Game Room</button>
-    <div id="share-link-box" style="display:none; width: 100%;">
-        <input type="text" id="room-url-input" readonly><br>
-        <button id="btn-copy-link" class="btn btn-blue">Copy Link & Send</button>
+<div id="lobby-screen">
+    <h2>Online 4-Player Table Mat</h2>
+    <p style="color:#bdc3c7; max-width:320px; margin:-5px 0 15px 0;">Team A (P1 & P3) vs Team B (P2 & P4)</p>
+    
+    <div id="setup-controls">
+        <button class="btn btn-green" id="btn-host" onclick="initiateHost()">Host New Room</button>
+        <p id="join-message" style="display:none; color:var(--accent-color); font-weight:bold;">Connecting automatically via invite link...</p>
     </div>
+
+    <div id="lobby-wait-status" style="margin-top: 15px; font-weight: bold; color: var(--accent-color);"></div>
 </div>
 
-<div id="main-container">
-
-    <div class="voice-control-bar">
-        <div style="display:flex; align-items:center; font-size:14px;">
-            <span id="voice-status-dot" class="voice-dot"></span>
-            <span id="voice-status-lbl">Voice: Disabled</span>
-        </div>
-        <button id="btn-toggle-voice" class="btn btn-purple" style="padding: 6px 14px; font-size: 12px;" onclick="initializeVoiceCall()">Connect Call</button>
-    </div>
-
+<div id="main-game-container">
     <div class="panel">
         <div class="score-board">
-            <div>Team A (P1+P3): <span id="score-teamA">0</span></div>
-            <div id="trump-display" style="visibility: hidden;"><span class="trump-reveal-box">TRUMP: <span id="trump-suit-val">?</span></span></div>
-            <div>Team B (P2+P4): <span id="score-teamB">0</span></div>
+            <div>Team A (P1+P3): <span id="score-A">0</span></div>
+            <div id="trump-container" style="display:none;"><span class="trump-badge">TRUMP: <span id="trump-current">?</span></span></div>
+            <div>Team B (P2+P4): <span id="score-B">0</span></div>
         </div>
-        <hr style="border: 0; border-top: 1px solid rgba(255,255,255,0.1); margin: 8px 0;">
-        <p id="status-text">Connecting to Live Server Core...</p>
+        <hr style="border:0; border-top:1px solid rgba(255,255,255,0.1); margin:8px 0;">
+        <p id="network-status">Connecting nodes...</p>
     </div>
 
-    <div id="step-trump-voter-select" class="modal-step">
+    <div id="modal-vote-chooser" class="voting-modal">
         <h3>Who will select the Trump Suit?</h3>
-        <p>Review your 4 cards down below and mutually vote on a selector.</p>
-        <div class="vote-status-indicator" id="indicator-trumpChooser">
-            P1: Waiting | P2: Waiting | P3: Waiting | P4: Waiting
-        </div>
-        <button class="btn btn-blue" onclick="submitLocalVote('trumpChooser', 'P1')">P1</button>
-        <button class="btn btn-blue" onclick="submitLocalVote('trumpChooser', 'P2')">P2</button>
-        <button class="btn btn-blue" onclick="submitLocalVote('trumpChooser', 'P3')">P3</button>
-        <button class="btn btn-blue" onclick="submitLocalVote('trumpChooser', 'P4')">P4</button>
-        <p id="trump-vote-error" class="error-msg">No consensus! Please recast your matching choices...</p>
+        <p>Review your 4 starter cards. All 4 online players must reach consensus.</p>
+        <div class="vote-tracker" id="track-chooser">P1: ⏳ | P2: ⏳ | P3: ⏳ | P4: ⏳</div>
+        <button class="btn btn-blue" onclick="castNetworkVote('trumpChooser', 'P1')">P1</button>
+        <button class="btn btn-blue" onclick="castNetworkVote('trumpChooser', 'P2')">P2</button>
+        <button class="btn btn-blue" onclick="castNetworkVote('trumpChooser', 'P3')">P3</button>
+        <button class="btn btn-blue" onclick="castNetworkVote('trumpChooser', 'P4')">P4</button>
     </div>
 
-    <div id="step-trump-select" class="modal-step">
-        <h3 id="suit-picker-title">Select Trump Suit</h3>
-        <p>Your selection will set the rules. Cards will finish dealing after selection.</p>
-        <button class="btn btn-suit" onclick="selectTrumpSuit('♠')">♠ Spades</button>
-        <button class="btn btn-suit" onclick="selectTrumpSuit('♣')">♣ Clubs</button>
-        <button class="btn btn-suit" onclick="selectTrumpSuit('♥')" style="color:#e74c3c;">♥ Hearts</button>
-        <button class="btn btn-suit" onclick="selectTrumpSuit('♦')" style="color:#e74c3c;">♦ Diamonds</button>
+    <div id="modal-pick-suit" class="voting-modal">
+        <h3>You won the selection vote! Pick Trump Suit:</h3>
+        <button class="btn btn-suit" onclick="broadcastTrumpSelection('♠')">♠ Spades</button>
+        <button class="btn btn-suit" onclick="broadcastTrumpSelection('♣')">♣ Clubs</button>
+        <button class="btn btn-suit" onclick="broadcastTrumpSelection('♥')" style="color:#e74c3c;">♥ Hearts</button>
+        <button class="btn btn-suit" onclick="broadcastTrumpSelection('♦')" style="color:#e74c3c;">♦ Diamonds</button>
     </div>
 
-    <div id="step-change-trump" class="modal-step">
+    <div id="modal-vote-change" class="voting-modal">
         <h3>Do you want to CHANGE the Trump Suit?</h3>
-        <p>Review all 8 cards. Changing triggers exactly once IF all 4 players agree.</p>
-        <div class="vote-status-indicator" id="indicator-changeTrump">
-            P1: Waiting | P2: Waiting | P3: Waiting | P4: Waiting
-        </div>
-        <button class="btn btn-green" onclick="submitLocalVote('changeTrump', 'YES')">YES, Change It</button>
-        <button class="btn btn-red" onclick="submitLocalVote('changeTrump', 'NO')">NO, Keep Suit</button>
+        <p>Review full 8 cards. Changes allowed exactly once if ALL 4 players vote YES.</p>
+        <div class="vote-tracker" id="track-change">P1: ⏳ | P2: ⏳ | P3: ⏳ | P4: ⏳</div>
+        <button class="btn btn-green" onclick="castNetworkVote('changeTrump', 'YES')">YES, Change It</button>
+        <button class="btn btn-red" onclick="castNetworkVote('changeTrump', 'NO')">NO, Keep It</button>
     </div>
 
-    <div id="step-start-verify" class="modal-step">
-        <h3>Who throws the 1st Card?</h3>
-        <p>All players must click and agree on who starts the play mat.</p>
-        <div class="vote-status-indicator" id="indicator-startPlayer">
-            P1: Waiting | P2: Waiting | P3: Waiting | P4: Waiting
-        </div>
-        <button class="btn btn-blue" onclick="submitLocalVote('startPlayer', 'P1')">P1</button>
-        <button class="btn btn-blue" onclick="submitLocalVote('startPlayer', 'P2')">P2</button>
-        <button class="btn btn-blue" onclick="submitLocalVote('startPlayer', 'P3')">P3</button>
-        <button class="btn btn-blue" onclick="submitLocalVote('startPlayer', 'P4')">P4</button>
-        <p id="start-vote-error" class="error-msg">No consensus! Re-evaluating starter votes...</p>
+    <div id="modal-vote-starter" class="voting-modal">
+        <h3>Who throws the 1st Card asset?</h3>
+        <p>Unanimous consensus required to start table play.</p>
+        <div class="vote-tracker" id="track-starter">P1: ⏳ | P2: ⏳ | P3: ⏳ | P4: ⏳</div>
+        <button class="btn btn-blue" onclick="castNetworkVote('startPlayer', 'P1')">P1</button>
+        <button class="btn btn-blue" onclick="castNetworkVote('startPlayer', 'P2')">P2</button>
+        <button class="btn btn-blue" onclick="castNetworkVote('startPlayer', 'P3')">P3</button>
+        <button class="btn btn-blue" onclick="castNetworkVote('startPlayer', 'P4')">P4</button>
     </div>
 
-    <div id="table">
-        <div class="table-slot-container" id="slot-container-p1">
-            <h4>P1 (You)</h4>
-            <div class="slot" id="slot-P1"></div>
-        </div>
-        <div class="table-slot-container" id="slot-container-p2">
-            <h4>P2</h4>
-            <div class="slot" id="slot-P2"></div>
-        </div>
-        <div class="table-slot-container" id="slot-container-p3">
-            <h4>P3</h4>
-            <div class="slot" id="slot-P3"></div>
-        </div>
-        <div class="table-slot-container" id="slot-container-p4">
-            <h4>P4</h4>
-            <div class="slot" id="slot-P4"></div>
-        </div>
+    <div id="table-mat">
+        <div class="mat-slot" id="slot-P1"><h4>P1 (You)</h4><div class="card-placeholder" id="mat-card-P1"></div></div>
+        <div class="mat-slot" id="slot-P2"><h4>P2</h4><div class="card-placeholder" id="mat-card-P2"></div></div>
+        <div class="mat-slot" id="slot-P3"><h4>P3</h4><div class="card-placeholder" id="mat-card-P3"></div></div>
+        <div class="mat-slot" id="slot-P4"><h4>P4</h4><div class="card-placeholder" id="mat-card-P4"></div></div>
     </div>
 
     <div class="panel" id="hand-panel">
-        <h3 style="margin: 0 0 5px 0; font-size: 16px;">Your Hand Assets (<span id="card-count-val">0</span> cards)</h3>
+        <h3 style="margin: 0 0 8px 0; font-size: 15px;">Your Hidden Local Hand (<span id="hand-count">0</span> Cards)</h3>
         <div id="my-hand" class="hand-container"></div>
     </div>
-
-    <div class="panel">
-        <h3 style="margin: 0; font-size: 14px; opacity: 0.8;">Room Chat Communication</h3>
-        <div id="chat-messages"></div>
-        <div class="chat-input-row">
-            <input type="text" id="chat-input" placeholder="Type message..." autocomplete="off">
-            <button id="chat-send" class="btn btn-blue" style="padding:10px 16px; font-size:14px;">Send</button>
-        </div>
-    </div>
-
 </div>
 
 <script>
-/* =========================
-   SUPABASE CONNECTION CORNER
-========================= */
-const SUPABASE_URL = "https://pftbngrjxxkasossvhwm.supabase.co";
-const SUPABASE_KEY = "sb_publishable_EmdkxXEgX5XYcvPnKZjdMA_Ff8G9PdC";
-const client = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+/* =========================================================================
+   CORE NETWORK ENGINE & SYNCED GLOBAL GAME STATE
+   ========================================================================= */
+let peer = null;
+let connections = []; 
+let myPlayerId = null; 
+let isHost = false;
 
-/* =========================
-   GAME CONTROL STATE ENGINE
-========================= */
 const suits = ['♠','♣','♥','♦'];
 const values = ['7','8','9','10','J','Q','K','A'];
-const cardValueMap = { '7':7, '8':8, '9':9, '10':10, 'J':11, 'Q':12, 'K':13, 'A':14 };
+const cardPower = { '7':7, '8':8, '9':9, '10':10, 'J':11, 'Q':12, 'K':13, 'A':14 };
 
-let roomID = new URLSearchParams(window.location.search).get('room');
-let myRole = ''; 
-let channel = null;
-
-let myHand = [];
-let fullDeckCache = [];
-let trumpSuit = null;
-let currentTurn = null;
-let leadPlayer = null;
-let turnOrder = []; 
-let scoreTeamA = 0, scoreTeamB = 0;
-let hasChangedTrump = false;
-let firstCardThrownGlobal = false;
-
-let tableCards = { P1: null, P2: null, P3: null, P4: null };
-let votes = {
-    trumpChooser: { P1: null, P2: null, P3: null, P4: null },
-    changeTrump: { P1: null, P2: null, P3: null, P4: null },
-    startPlayer: { P1: null, P2: null, P3: null, P4: null }
+let gameState = {
+    phase: 'LOBBY', 
+    hands: { P1:[], P2:[], P3:[], P4:[] },
+    tableCards: { P1:null, P2:null, P3:null, P4:null },
+    votes: {
+        trumpChooser: { P1:null, P2:null, P3:null, P4:null },
+        changeTrump: { P1:null, P2:null, P3:null, P4:null },
+        startPlayer: { P1:null, P2:null, P3:null, P4:null }
+    },
+    trumpSuit: null,
+    currentTurn: null,
+    leadPlayer: null,
+    turnOrder: [],
+    scoreA: 0,
+    scoreB: 0,
+    hasChangedTrump: false
 };
 
-/* =========================
-   LIVE MESH VOICE OVERLAY (WebRTC)
-========================= */
-let peer = null;
-let myStream = null;
-let establishedCalls = {};
-
-async function initializeVoiceCall() {
-    if (myStream) return;
-
-    document.getElementById('btn-toggle-voice').innerText = "Requesting Mic...";
-    document.getElementById('voice-status-lbl').innerText = "Allow Mic access...";
-
-    try {
-        myStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
-        document.getElementById('voice-status-lbl').innerText = "Connecting Call Node...";
-        
-        const uniquePeerID = `${roomID}-${myRole}`.toLowerCase();
-        peer = new Peer(uniquePeerID);
-
-        peer.on('open', (id) => {
-            document.getElementById('voice-status-lbl').innerText = "Voice Channel Active";
-            document.getElementById('voice-status-dot').className = "voice-dot connected";
-            document.getElementById('btn-toggle-voice').style.display = 'none';
-            
-            channel.send({
-                type: 'broadcast',
-                event: 'voice-ready-handshake',
-                payload: { senderRole: myRole }
-            });
-            
-            // Connect to roles with lower IDs to systematically establish the mesh without duplicate calls
-            dialExistingMeshPeers();
-        });
-
-        peer.on('call', (incomingCall) => {
-            const callerRole = incomingCall.peer.split('-').pop().toUpperCase();
-            establishedCalls[callerRole] = incomingCall;
-            incomingCall.answer(myStream);
-            incomingCall.on('stream', (remoteStream) => {
-                playRemoteAudioStream(remoteStream, callerRole);
-            });
-        });
-
-    } catch (err) {
-        console.error("Audio error:", err);
-        alert("Voice Connection Failed! Ensure HTTPS/Permissions are valid.");
-        document.getElementById('btn-toggle-voice').innerText = "Retry Call";
-        document.getElementById('voice-status-lbl').innerText = "Mic Blocked";
-    }
-}
-
-function dialExistingMeshPeers() {
-    const roles = ['P1', 'P2', 'P3', 'P4'];
-    const myIndex = roles.indexOf(myRole);
-    
-    // Call every player that joined before us
-    for (let i = 0; i < myIndex; i++) {
-        dialOpponentVoiceNode(roles[i]);
-    }
-}
-
-function dialOpponentVoiceNode(targetRole) {
-    if (!peer || !myStream || establishedCalls[targetRole]) return;
-    
-    const targetPeerID = `${roomID}-${targetRole}`.toLowerCase();
-    const call = peer.call(targetPeerID, myStream);
-    establishedCalls[targetRole] = call;
-    
-    call.on('stream', (remoteStream) => {
-        playRemoteAudioStream(remoteStream, targetRole);
-    });
-}
-
-function playRemoteAudioStream(stream, role) {
-    let audio = document.getElementById(`remote-voice-${role}`);
-    if (!audio) {
-        audio = document.createElement("audio");
-        audio.id = `remote-voice-${role}`;
-        audio.autoplay = true;
-        document.body.appendChild(audio);
-    }
-    audio.srcObject = stream;
-}
-
-/* =========================
-   INITIALIZATION LAYERS
-========================= */
+// CHECK URL ON LOAD FOR AUTOMATIC JOINING VIA LINK
 window.addEventListener('DOMContentLoaded', () => {
-    if (roomID) {
-        // Hide create button since we are slotting into an existing link
-        document.getElementById('btn-create-room').style.display = 'none';
-        document.getElementById('setup-instruction-text').innerText = "Connecting to slot allocation...";
-        initRealtimeEngine();
-    } else {
-        document.getElementById('btn-create-room').addEventListener('click', generateRoom);
+    const urlParams = new URLSearchParams(window.location.search);
+    const roomId = urlParams.get('room');
+    if (roomId) {
+        document.getElementById('btn-host').style.display = 'none';
+        document.getElementById('join-message').style.display = 'block';
+        initiateJoin(roomId);
     }
-    document.getElementById('btn-copy-link').addEventListener('click', copyRoomLink);
-    document.getElementById('chat-send').addEventListener('click', sendChat);
-    document.getElementById('chat-input').addEventListener('keypress', (e) => {
-        if(e.key === 'Enter') sendChat();
-    });
 });
 
-function generateRoom() {
-    roomID = Math.random().toString(36).substring(2, 9);
-    myRole = 'P1';
-    const link = window.location.origin + window.location.pathname + '?room=' + roomID;
-    document.getElementById('room-url-input').value = link;
-    document.getElementById('share-link-box').style.display = 'block';
-    initRealtimeEngine();
-}
+/* =========================================================================
+   P2P ROUTINES (PEERJS LINK ENGINE)
+   ========================================================================= */
+function initiateHost() {
+    isHost = true;
+    myPlayerId = 'P1';
+    document.getElementById('setup-controls').style.display = 'none';
+    document.getElementById('lobby-wait-status').innerText = "Creating room server node...";
 
-function copyRoomLink() {
-    const input = document.getElementById('room-url-input');
-    input.select();
-    navigator.clipboard.writeText(input.value);
-    alert("Match Room join link copied! Send to 3 other players.");
-}
+    peer = new Peer();
+    
+    peer.on('open', (id) => {
+        const joinLink = `${window.location.origin}${window.location.pathname}?room=${id}`;
+        document.getElementById('lobby-wait-status').innerHTML = `
+            <p style='color:white; font-size:15px; margin-bottom:5px;'>Copy and send this invite link to 3 players:</p>
+            <div class='link-box' id='invite-link-box' onclick='copyInviteLink("${joinLink}")'>${joinLink}</div>
+            <p style='color:#bdc3c7; font-size:12px; margin-top:-5px;'>Click the box to copy link automatically</p>
+            <h3 id='connected-count' style='color:var(--accent-color); margin-top:20px;'>Players Connected: 1 / 4</h3>
+            <p style='color:#bdc3c7;'>The game will automatically launch when all 4 slots fill up.</p>
+        `;
+    });
 
-/* =========================
-   SUPABASE REALTIME BROADCAST HUB
-========================= */
-function initRealtimeEngine() {
-    channel = client.channel(`room-${roomID}`);
+    peer.on('connection', (conn) => {
+        let assignedSlot = 'P' + (connections.length + 2); // Assigns P2, P3, P4
+        if (connections.length >= 3) {
+            conn.on('open', () => conn.send({ type: 'REJECT', msg: 'Room Full' }));
+            return;
+        }
 
-    channel
-    .on('broadcast', { event: 'request-slot' }, ({ payload }) => {
-        if (myRole === 'P1') {
-            // Assign next open position slot
-            channel.send({
-                type: 'broadcast',
-                event: 'assign-slot',
-                payload: { requestID: payload.requestID, assignedRole: payload.wantedRole }
-            });
-        }
-    })
-    .on('broadcast', { event: 'assign-slot' }, ({ payload }) => {
-        if (!myRole && payload.requestID === window.localRequestID) {
-            myRole = payload.assignedRole;
-            realignTableLabels();
-            document.getElementById('setup-instruction-text').innerText = `Joined as ${myRole}. Waiting for full party...`;
-            channel.send({ type: 'broadcast', event: 'player-presence', payload: { role: myRole } });
-        }
-    })
-    .on('broadcast', { event: 'player-presence' }, ({ payload }) => {
-        if (myRole === 'P1') {
-            // Check if all 4 connection sockets are active
-            checkPartyFullStatus();
-        }
-    })
-    .on('broadcast', { event: 'voice-ready-handshake' }, ({ payload }) => {
-        if (payload.senderRole !== myRole && myStream) {
-            dialOpponentVoiceNode(payload.senderRole);
-        }
-    })
-    .on('broadcast', { event: 'deal-phase1' }, ({ payload }) => {
-        myHand = payload.hands[myRole];
-        fullDeckCache = payload.remainingDeck;
-        document.getElementById('setup-screen').style.display = 'none';
-        localInitializeMatchState();
-    })
-    .on('broadcast', { event: 'deal-phase2' }, ({ payload }) => {
-        myHand = myHand.concat(payload.hands[myRole]);
-        localResolveTrumpSelection(payload.suit);
-    })
-    .on('broadcast', { event: 'vote-sync' }, ({ payload }) => {
-        votes[payload.type][payload.player] = payload.choice;
-        updateUIIndicators(payload.type);
-        checkVoteConsensus(payload.type);
-    })
-    .on('broadcast', { event: 'play-card' }, ({ payload }) => {
-        localPlayCard(payload.player, payload.card);
-    })
-    .on('broadcast', { event: 'chat' }, ({ payload }) => {
-        addChat(payload.name, payload.msg);
-    })
-    .subscribe((status) => {
-        if (status === 'SUBSCRIBED') {
-            if (myRole === 'P1') {
-                realignTableLabels();
-                document.getElementById('status-text').innerText = "Room Created. Waiting for 3 players to join...";
-            } else {
-                // Request a dynamic role assignment
-                window.localRequestID = Math.random().toString(36).substring(2, 9);
-                // We request to fill the space by scanning the URL parameters or fallback tracking
-                document.getElementById('status-text').innerText = "Requesting slot allocation...";
-                
-                // Send discovery ping to host to acquire role seat
-                setTimeout(() => {
-                    // Fallback to auto-scan selection based on current trackings
-                    const rolesToTry = ['P2', 'P3', 'P4'];
-                    const pickedFallback = rolesToTry[Math.floor(Math.random() * 3)];
-                    channel.send({ 
-                        type: 'broadcast', 
-                        event: 'request-slot', 
-                        payload: { requestID: window.localRequestID, wantedRole: pickedFallback } 
-                    });
-                }, 500);
+        connections.push({ conn: conn, playerId: assignedSlot });
+        
+        conn.on('open', () => {
+            conn.send({ type: 'ASSIGN_PLAYER', playerId: assignedSlot });
+            updateHostLobbyUI();
+            if (connections.length === 3) {
+                setTimeout(startNetworkedMatchSetup, 1200); // Launches automatically when 4 players are locked in
             }
-        }
+        });
+
+        conn.on('data', (data) => handleIncomingNetworkMessage(data, assignedSlot));
+        
+        conn.on('close', () => {
+            alert(`Player left room connection loop. Resetting...`);
+            window.location.search = ""; // clear params
+        });
     });
 }
 
-function checkPartyFullStatus() {
-    // The Host handles tracking incoming presence validation states via a quick ping routine
-    // For simplicity in this clean distribution architecture, you can start the match when all 4 slots verify readiness
-    // Triggering the layout swap
+function initiateJoin(targetId) {
+    isHost = false;
+    document.getElementById('lobby-wait-status').innerText = "Joining host game lobby table...";
+
+    peer = new Peer();
+    
+    peer.on('open', () => {
+        let conn = peer.connect(targetId);
+        connections = [conn]; 
+
+        conn.on('data', (data) => handleIncomingNetworkMessage(data, null));
+        
+        conn.on('close', () => {
+            alert("Host disconnected or closed the room.");
+            window.location.href = window.location.pathname; // clear param routing
+        });
+    });
+    
+    peer.on('error', (err) => {
+        alert("Connection error! The link may be expired or the host closed the tab.");
+        window.location.href = window.location.pathname;
+    });
 }
 
-// Button to manually trigger if presence takes time to resolve over local test devices
-if (window.location.search.includes('room') && !myRole) {
-    // Fast-track manual entry selector buttons if needed, or host auto starts
+function copyInviteLink(linkText) {
+    navigator.clipboard.writeText(linkText).then(() => {
+        const box = document.getElementById('invite-link-box');
+        const oldText = box.innerText;
+        box.innerText = "COPIED TO CLIPBOARD!";
+        setTimeout(() => box.innerText = oldText, 2000);
+    }).catch(err => {
+        alert("Failed to copy automatically. Please select the text manually.");
+    });
 }
 
-/* =========================
-   GAME ENGINE CARD FLOW RULES
-========================= */
-function hostStartMatchDirect() {
-    if (myRole !== 'P1') return;
-    hostDealInitialPhase();
+function updateHostLobbyUI() {
+    let count = connections.length + 1;
+    document.getElementById('connected-count').innerText = `Players Connected: ${count} / 4`;
 }
 
-// Add a quick check button or auto-trigger once room is filled
-document.getElementById('setup-screen').addEventListener('click', () => {
-    if (myRole === 'P1') {
-        document.getElementById('setup-instruction-text').innerHTML += `<br><button class="btn btn-blue" style="margin-top:10px; padding:8px 12px; font-size:12px;" onclick="hostDealInitialPhase()">Force Start (Host)</button>`;
+/* =========================================================================
+   SYNCHRONIZED NETWORK EMISSION & ROUTING
+   ========================================================================= */
+function broadcastGameState() {
+    if (!isHost) return;
+    connections.forEach(c => {
+        c.conn.send({ type: 'STATE_SYNC', state: gameState });
+    });
+    processStateTransitionUI();
+}
+
+function sendToHost(payload) {
+    if (isHost) {
+        handleIncomingNetworkMessage(payload, 'P1');
+    } else if (connections[0]) {
+        connections[0].send(payload);
     }
-});
+}
 
-function hostDealInitialPhase() {
+function handleIncomingNetworkMessage(msg, senderId) {
+    if (msg.type === 'ASSIGN_PLAYER') {
+        myPlayerId = msg.playerId;
+        document.getElementById('lobby-wait-status').innerHTML = `
+            <h3>Connected as Slot: <span style='color:var(--accent-color)'>${myPlayerId}</span></h3>
+            <p style='color:#bdc3c7;'>Waiting for remaining players to join link...</p>
+        `;
+    }
+    else if (msg.type === 'REJECT') {
+        alert(msg.msg);
+        window.location.href = window.location.pathname;
+    }
+    else if (msg.type === 'STATE_SYNC') {
+        gameState = msg.state;
+        processStateTransitionUI();
+    }
+    // Host Logic Handlers
+    else if (isHost) {
+        if (msg.type === 'CAST_VOTE') {
+            gameState.votes[msg.voteType][senderId] = msg.choice;
+            evaluateVoteCompletion(msg.voteType);
+        }
+        else if (msg.type === 'SELECT_TRUMP') {
+            executeTrumpChoiceAssignment(msg.suit);
+        }
+        else if (msg.type === 'THROW_CARD') {
+            executeCardPlayTurn(msg.cardIndex, senderId);
+        }
+    }
+}
+
+/* =========================================================================
+   GAME ENGINE LOGIC SYSTEM LOOP
+   ========================================================================= */
+function startNetworkedMatchSetup() {
     let deck = [];
     suits.forEach(s => {
         values.forEach(v => {
             deck.push({ value: v, suit: s, color: (s==='♥'||s==='♦') ? 'red' : 'black' });
         });
     });
-
-    // Shuffle deck
     for (let i = deck.length - 1; i > 0; i--) {
         const j = Math.floor(Math.random() * (i + 1));
         [deck[i], deck[j]] = [deck[j], deck[i]];
     }
 
-    const hands = {
-        P1: deck.splice(0, 4),
-        P2: deck.splice(0, 4),
-        P3: deck.splice(0, 4),
-        P4: deck.splice(0, 4)
-    };
+    // Stage 1 Deal
+    gameState.hands.P1 = deck.splice(0, 4);
+    gameState.hands.P2 = deck.splice(0, 4);
+    gameState.hands.P3 = deck.splice(0, 4);
+    gameState.hands.P4 = deck.splice(0, 4);
+    gameState.deckRemaining = deck; 
 
-    channel.send({
-        type: 'broadcast',
-        event: 'deal-phase1',
-        payload: { hands, remainingDeck: deck }
-    });
+    gameState.phase = 'VOTE_CHOOSER';
+    broadcastGameState();
 }
 
-function localInitializeMatchState() {
-    scoreTeamA = 0; scoreTeamB = 0;
-    firstCardThrownGlobal = false;
-    document.getElementById('score-teamA').innerText = '0';
-    document.getElementById('score-teamB').innerText = '0';
-    document.getElementById('trump-display').style.visibility = 'hidden'; 
-    
-    ['P1', 'P2', 'P3', 'P4'].forEach(p => {
-        document.getElementById(`slot-${p}`).innerHTML = '';
-        tableCards[p] = null;
-    });
-    
-    clearAllVotesData();
-    hideAllModals();
-    
-    document.getElementById('step-trump-voter-select').style.display = 'block';
-    updateStatus("Phase 1: 4 cards dealt. Cast matching votes on who selects Trump.");
-    renderHand();
+function castNetworkVote(voteType, choice) {
+    sendToHost({ type: 'CAST_VOTE', voteType: voteType, choice: choice });
 }
 
-function clearAllVotesData() {
-    Object.keys(votes).forEach(type => {
-        votes[type] = { P1: null, P2: null, P3: null, P4: null };
-    });
-}
-
-function submitLocalVote(voteType, choice) {
-    votes[voteType][myRole] = choice;
-    updateUIIndicators(voteType);
-
-    channel.send({
-        type: 'broadcast',
-        event: 'vote-sync',
-        payload: { type: voteType, player: myRole, choice: choice }
-    });
-
-    checkVoteConsensus(voteType);
-}
-
-function checkVoteConsensus(type) {
-    let voteObj = votes[type];
-    if (voteObj.P1 && voteObj.P2 && voteObj.P3 && voteObj.P4) {
-        if (voteObj.P1 === voteObj.P2 && voteObj.P2 === voteObj.P3 && voteObj.P3 === voteObj.P4) {
-            resolveVoteAction(type, voteObj.P1);
+function evaluateVoteCompletion(type) {
+    let vObj = gameState.votes[type];
+    if (vObj.P1 && vObj.P2 && vObj.P3 && vObj.P4) {
+        if (vObj.P1 === vObj.P2 && vObj.P2 === vObj.P3 && vObj.P3 === vObj.P4) {
+            resolveConsensusSuccess(type, vObj.P1);
         } else {
             if (type === 'changeTrump') {
-                // If anyone votes NO, change fails
-                const allYes = (voteObj.P1==='YES' && voteObj.P2==='YES' && voteObj.P3==='YES' && voteObj.P4==='YES');
-                resolveVoteAction('changeTrump', allYes ? 'YES' : 'NO');
+                let allYes = (vObj.P1==='YES' && vObj.P2==='YES' && vObj.P3==='YES' && vObj.P4==='YES');
+                resolveConsensusSuccess('changeTrump', allYes ? 'YES' : 'NO');
                 return;
             }
-            
-            let errorId = (type === 'trumpChooser') ? 'trump-vote-error' : 'start-vote-error';
-            let errorDiv = document.getElementById(errorId);
-            if(errorDiv) errorDiv.style.display = 'block';
-            
-            setTimeout(() => {
-                voteObj.P1 = null; voteObj.P2 = null; voteObj.P3 = null; voteObj.P4 = null;
-                updateUIIndicators(type);
-                if(errorDiv) errorDiv.style.display = 'none';
-            }, 1600);
+            gameState.votes[type] = { P1: null, P2: null, P3: null, P4: null };
+            broadcastGameState();
         }
+    } else {
+        broadcastGameState();
     }
 }
 
-function resolveVoteAction(type, consensus) {
-    hideAllModals();
-
+function resolveConsensusSuccess(type, consensusVal) {
     if (type === 'trumpChooser') {
-        if (myRole === consensus) {
-            document.getElementById('suit-picker-title').innerText = "Select Trump Suit:";
-            document.getElementById('step-trump-select').style.display = 'block';
-            updateStatus("You are the Trump Selector! Choose a suit rule.");
-        } else {
-            updateStatus(`Player ${consensus} is choosing the Trump suit layout...`);
-        }
-    } 
+        gameState.phase = 'PICK_SUIT';
+        gameState.currentTurn = consensusVal; 
+    }
     else if (type === 'changeTrump') {
-        if (consensus === 'YES') {
-            alert("Unanimous YES! Selector picks a new Trump suit.");
-            votes.changeTrump = { P1: null, P2: null, P3: null, P4: null };
-            updateUIIndicators('changeTrump');
-            hasChangedTrump = true;
-
-            let originalChooser = votes.trumpChooser.P1 || 'P1'; 
-            if (myRole === originalChooser) {
-                document.getElementById('suit-picker-title').innerText = "Pick New Trump Suit:";
-                document.getElementById('step-trump-select').style.display = 'block';
-            } else {
-                updateStatus(`Player ${originalChooser} is choosing a new Trump...`);
-            }
+        if (consensusVal === 'YES') {
+            gameState.hasChangedTrump = true;
+            gameState.votes.changeTrump = { P1: null, P2: null, P3: null, P4: null };
+            gameState.phase = 'PICK_SUIT'; 
         } else {
-            alert("Keep choice won or mixed split detected. Proceeding with current Trump suit.");
-            goToStarterVotingScreen();
+            advanceToStarterVotingState();
         }
     }
     else if (type === 'startPlayer') {
-        currentTurn = consensus;
-        leadPlayer = currentTurn;
-        buildTurnOrder(leadPlayer);
-        updateStatus(`Game starts! Turn: ${currentTurn === myRole ? 'YOU' : currentTurn}`);
-        renderHand();
+        gameState.phase = 'PLAYING';
+        gameState.currentTurn = consensusVal;
+        gameState.leadPlayer = consensusVal;
+        buildTurnSequencingArray(gameState.leadPlayer);
     }
+    broadcastGameState();
 }
 
-function selectTrumpSuit(suit) {
-    if (myRole === 'P1') {
-        executePhase2Deal(suit);
-    } else {
-        // If an alternate player is voted selector, they pipe instructions through the host socket proxy
-        channel.send({
-            type: 'broadcast',
-            event: 'vote-sync',
-            payload: { type: 'trumpChooser', player: myRole, choice: suit } 
-        });
-        // Let host process the slicing sequence
-        executePhase2Deal(suit);
-    }
+function broadcastTrumpSelection(suit) {
+    sendToHost({ type: 'SELECT_TRUMP', suit: suit });
 }
 
-function executePhase2Deal(suit) {
-    if (myRole !== 'P1') {
-        // Proxy back up to P1 if another node selects it
-        channel.send({ type: 'broadcast', event: 'chat', payload: { name: 'System', msg: `Trump choice selected: ${suit}` } });
-    }
+function executeTrumpChoiceAssignment(suit) {
+    gameState.trumpSuit = suit;
     
-    // Only process array slicing once safely inside the host machine execution loop
-    if (myRole === 'P1') {
-        const hands = {
-            P1: fullDeckCache.splice(0, 4),
-            P2: fullDeckCache.splice(0, 4),
-            P3: fullDeckCache.splice(0, 4),
-            P4: fullDeckCache.splice(0, 4)
-        };
-        channel.send({
-            type: 'broadcast',
-            event: 'deal-phase2',
-            payload: { suit, hands }
-        });
-    }
-}
+    // Stage 2 deal
+    gameState.hands.P1 = gameState.hands.P1.concat(gameState.deckRemaining.splice(0, 4));
+    gameState.hands.P2 = gameState.hands.P2.concat(gameState.deckRemaining.splice(0, 4));
+    gameState.hands.P3 = gameState.hands.P3.concat(gameState.deckRemaining.splice(0, 4));
+    gameState.hands.P4 = gameState.hands.P4.concat(gameState.deckRemaining.splice(0, 4));
 
-function localResolveTrumpSelection(suit) {
-    trumpSuit = suit;
-    document.getElementById('trump-suit-val').innerText = suit;
-    hideAllModals();
-
-    if (hasChangedTrump) {
-        updateStatus("New Trump locked! Voting for match starter turn...");
-        goToStarterVotingScreen();
+    if (gameState.hasChangedTrump) {
+        advanceToStarterVotingState();
     } else {
-        document.getElementById('step-change-trump').style.display = 'block';
-        updateStatus("Trump set. Review all 8 assets. Vote to change?");
-        renderHand();
+        gameState.phase = 'VOTE_CHANGE';
     }
+    broadcastGameState();
 }
 
-function goToStarterVotingScreen() {
-    clearAllVotesData();
-    updateUIIndicators('startPlayer');
-    document.getElementById('step-start-verify').style.display = 'block';
-    updateStatus("Cast votes on who throws the 1st card.");
-    renderHand();
+function advanceToStarterVotingState() {
+    gameState.votes.trumpChooser = { P1: null, P2: null, P3: null, P4: null };
+    gameState.votes.changeTrump = { P1: null, P2: null, P3: null, P4: null };
+    gameState.phase = 'VOTE_STARTER';
 }
 
-function buildTurnOrder(starter) {
-    const clockwiseSequence = ['P1', 'P2', 'P3', 'P4'];
-    let idx = clockwiseSequence.indexOf(starter);
-    turnOrder = [];
+function buildTurnSequencingArray(start) {
+    const clockwise = ['P1', 'P2', 'P3', 'P4'];
+    let idx = clockwise.indexOf(start);
+    gameState.turnOrder = [];
     for (let i = 0; i < 4; i++) {
-        turnOrder.push(clockwiseSequence[(idx + i) % 4]);
+        gameState.turnOrder.push(clockwise[(idx + i) % 4]);
     }
 }
 
-function playCard(index) {
-    if (myRole !== currentTurn) return;
-    if (tableCards[myRole]) return;
+function localPlayTrigger(cardIdx) {
+    const myHand = gameState.hands[myPlayerId];
+    const card = myHand[cardIdx];
 
-    const card = myHand[index];
-
-    // Follow Suit Rule Enforcer
-    if (myRole !== leadPlayer && tableCards[leadPlayer]) {
-        const ledSuit = tableCards[leadPlayer].suit;
-        const hasLedSuit = myHand.some(c => c.suit === ledSuit);
-        if (hasLedSuit && card.suit !== ledSuit) {
+    if (myPlayerId !== gameState.leadPlayer && gameState.tableCards[gameState.leadPlayer]) {
+        let ledSuit = gameState.tableCards[gameState.leadPlayer].suit;
+        let hasSuit = myHand.some(c => c.suit === ledSuit);
+        if (hasSuit && card.suit !== ledSuit) {
             alert(`Rule Violation! You must follow suit with a ${ledSuit} card.`);
             return;
         }
     }
-
-    myHand.splice(index, 1);
-    localPlayCard(myRole, card);
-
-    channel.send({
-        type: 'broadcast',
-        event: 'play-card',
-        payload: { player: myRole, card: card }
-    });
+    sendToHost({ type: 'THROW_CARD', cardIndex: cardIdx });
 }
 
-function localPlayCard(player, card) {
-    tableCards[player] = card;
+function executeCardPlayTurn(idx, player) {
+    if (gameState.currentTurn !== player) return;
+    if (gameState.tableCards[player]) return;
+
+    let targetCard = gameState.hands[player].splice(idx, 1)[0];
+    gameState.tableCards[player] = targetCard;
+
+    let playedCount = Object.values(gameState.tableCards).filter(c => c !== null).length;
+
+    if (playedCount === 4) {
+        gameState.currentTurn = null; 
+        broadcastGameState();
+        setTimeout(evaluateNetworkTrickResolution, 1200);
+    } else {
+        let currentIdx = gameState.turnOrder.indexOf(player);
+        gameState.currentTurn = gameState.turnOrder[(currentIdx + 1) % 4];
+        broadcastGameState();
+    }
+}
+
+function evaluateNetworkTrickResolution() {
+    let ledSuit = gameState.tableCards[gameState.leadPlayer].suit;
+    let highPower = -1;
+    let winner = gameState.leadPlayer;
+
+    ['P1', 'P2', 'P3', 'P4'].forEach(p => {
+        let card = gameState.tableCards[p];
+        let power = cardPower[card.value];
+
+        if (card.suit === gameState.trumpSuit) power += 100;
+        else if (card.suit !== ledSuit) power = -1; 
+
+        if (power > highPower) {
+            highPower = power;
+            winner = p;
+        }
+    });
+
+    if (winner === 'P1' || winner === 'P3') gameState.scoreA++;
+    else gameState.scoreB++;
+
+    ['P1', 'P2', 'P3', 'P4'].forEach(p => gameState.tableCards[p] = null);
+
+    gameState.leadPlayer = winner;
+    gameState.currentTurn = winner;
+    buildTurnSequencingArray(winner);
+
+    if (gameState.hands.P1.length === 0) {
+        gameState.phase = 'END';
+    }
+    broadcastGameState();
+}
+
+/* =========================================================================
+   UI RENDERING INTERFACES
+========================================================================= */
+function processStateTransitionUI() {
+    document.getElementById('lobby-screen').style.display = 'none';
+    document.getElementById('main-game-container').style.display = 'flex';
+
+    document.getElementById('score-A').innerText = gameState.scoreA;
+    document.getElementById('score-B').innerText = gameState.scoreB;
+
+    if (gameState.trumpSuit) {
+        document.getElementById('trump-container').style.display = 'block';
+        document.getElementById('trump-current').innerText = gameState.trumpSuit;
+    }
+
+    const dialogs = document.querySelectorAll('.voting-modal');
+    dialogs.forEach(d => d.style.display = 'none');
+
+    let statusText = "";
     
-    if (!firstCardThrownGlobal) {
-        firstCardThrownGlobal = true;
-        document.getElementById('trump-display').style.visibility = 'visible';
+    switch (gameState.phase) {
+        case 'VOTE_CHOOSER':
+            document.getElementById('modal-vote-chooser').style.display = 'block';
+            updateTrackers('trumpChooser', 'track-chooser');
+            statusText = "Voting for Trump Selector Player...";
+            break;
+            
+        case 'PICK_SUIT':
+            statusText = `Waiting for ${gameState.currentTurn} to choose the Trump suit...`;
+            if (myPlayerId === gameState.currentTurn) {
+                document.getElementById('modal-pick-suit').style.display = 'block';
+            }
+            break;
+            
+        case 'VOTE_CHANGE':
+            document.getElementById('modal-vote-change').style.display = 'block';
+            updateTrackers('changeTrump', 'track-change');
+            statusText = "Voting: Keep or Change current Trump Suit?";
+            break;
+            
+        case 'VOTE_STARTER':
+            document.getElementById('modal-vote-starter').style.display = 'block';
+            updateTrackers('startPlayer', 'track-starter');
+            statusText = "Voting for First Player to throw card...";
+            break;
+            
+        case 'PLAYING':
+            statusText = (gameState.currentTurn === myPlayerId) ? "Your turn! Throw a card asset." : `Waiting for ${gameState.currentTurn} to play...`;
+            break;
+            
+        case 'END':
+            let winText = gameState.scoreA === gameState.scoreB ? "🤝 Game tied completely!" : (gameState.scoreA > gameState.scoreB ? "🎉 Team A (P1+P3) Wins!" : "🎉 Team B (P2+P4) Wins!");
+            statusText = winText + " Refresh to clear layout routing.";
+            alert(winText);
+            break;
     }
 
-    renderTable();
-
-    // Count how many cards are currently thrown onto the play mat
-    let activeCardsOnMat = Object.values(tableCards).filter(c => c !== null).length;
-
-    if (activeCardsOnMat === 4) {
-        currentTurn = null;
-        renderHand();
-        updateStatus("All 4 cards down. Evaluating trick team score...");
-        setTimeout(evaluate4PlayerTrickWinner, 1500);
-    } else {
-        // Advance systematically along the turn sequence array loop
-        let currentIdx = turnOrder.indexOf(player);
-        currentTurn = turnOrder[(currentIdx + 1) % 4];
-        renderHand();
-        updateStatus(currentTurn === myRole ? "Your turn! Throw a card asset." : `Waiting for player ${currentTurn}...`);
-    }
+    document.getElementById('network-status').innerText = `[Slot ${myPlayerId}] — ${statusText}`;
+    
+    renderLocalHandMatrix();
+    renderTableArenaMat();
 }
 
-function evaluate4PlayerTrickWinner() {
-    const ledSuit = tableCards[leadPlayer].suit;
-    let highestValue = -1;
-    let trickWinnerRole = leadPlayer;
-
-    ['P1', 'P2', 'P3', 'P4'].forEach(p => {
-        const c = tableCards[p];
-        let currentPower = cardValueMap[c.value];
-        
-        // Evaluate logic checking trump suit priorities and matching initial lead plays
-        if (c.suit === trumpSuit) {
-            // Trump shifts card score weight by baseline factor
-            currentPower += 100; 
-        } else if (c.suit !== ledSuit) {
-            // Thrown off-suit without matching trump holds 0 power assets
-            currentPower = -1;
-        }
-
-        if (currentPower > highestValue) {
-            highestValue = currentPower;
-            trickWinnerRole = p;
-        }
-    });
-
-    // Score point tallies awarded to Team Partnerships
-    if (trickWinnerRole === 'P1' || trickWinnerRole === 'P3') {
-        scoreTeamA++;
-        document.getElementById('score-teamA').innerText = scoreTeamA;
-        alert(`Team A wins trick via ${trickWinnerRole}!`);
-    } else {
-        scoreTeamB++;
-        document.getElementById('score-teamB').innerText = scoreTeamB;
-        alert(`Team B wins trick via ${trickWinnerRole}!`);
-    }
-
-    // Reset Table Play Mat Arena for next hand round
-    ['P1', 'P2', 'P3', 'P4'].forEach(p => {
-        document.getElementById(`slot-${p}`).innerHTML = '';
-        tableCards[p] = null;
-    });
-
-    leadPlayer = trickWinnerRole;
-    currentTurn = trickWinnerRole;
-    buildTurnOrder(leadPlayer);
-
-    if (myHand.length === 0) {
-        currentTurn = null;
-        renderHand();
-        
-        let finalMessage = "";
-        if (scoreTeamA === scoreTeamB) finalMessage = "🤝 MATCH OVER! Absolute Partnership Tie!";
-        else if (scoreTeamA > scoreTeamB) finalMessage = "🎉 MATCH OVER! Team A (P1+P3) Takes Victory!";
-        else finalMessage = "🎉 MATCH OVER! Team B (P2+P4) Takes Victory!";
-        
-        updateStatus(finalMessage);
-        alert(finalMessage);
-    } else {
-        updateStatus(currentTurn === myRole ? "You won the trick! Lead next hand card." : `Trick winner: Player ${currentTurn}. Waiting for lead...`);
-        renderHand();
-    }
+function updateTrackers(voteType, elementId) {
+    let votes = gameState.votes[voteType];
+    document.getElementById(elementId).innerText = `P1: ${votes.P1?'✅':'⏳'} | P2: ${votes.P2?'✅':'⏳'} | P3: ${votes.P3?'✅':'⏳'} | P4: ${votes.P4?'✅':'⏳'}`;
 }
 
-/* =========================
-   UI LAYOUT RENDERING CORE
-========================= */
-function realignTableLabels() {
-    // Labels adapt seamlessly to match orientation perspective
-    const roles = ['P1', 'P2', 'P3', 'P4'];
-    roles.forEach(r => {
-        const container = document.getElementById(`slot-container-${r.toLowerCase()}`);
-        if(container) {
-            container.getElementsByTagName('h4')[0].innerText = (r === myRole) ? `${r} (You)` : r;
-        }
-    });
-}
-
-function renderHand() {
+function renderLocalHandMatrix() {
     const container = document.getElementById('my-hand');
     container.innerHTML = '';
 
-    myHand.forEach((card, index) => {
+    let myCardsArray = gameState.hands[myPlayerId] || [];
+    myCardsArray.forEach((card, index) => {
         const div = document.createElement('div');
         div.className = `card ${card.color}`;
-        if (myRole !== currentTurn) div.classList.add('disabled');
         
+        let isMyTurn = (gameState.phase === 'PLAYING' && gameState.currentTurn === myPlayerId);
+        if (!isMyTurn) div.classList.add('disabled');
+
         div.innerHTML = `
-            <div class="card-top">${card.value}</div>
-            <div class="card-suit">${card.suit}</div>
-            <div class="card-bottom">${card.value}</div>
+            <div>${card.value}</div>
+            <div class="suit-center">${card.suit}</div>
+            <div class="val-bottom">${card.value}</div>
         `;
-        div.onclick = () => playCard(index);
+        div.onclick = () => localPlayTrigger(index);
         container.appendChild(div);
     });
 
-    document.getElementById('card-count-val').innerText = myHand.length;
-    document.getElementById('hand-panel').classList.toggle('active-turn', myRole === currentTurn);
+    document.getElementById('hand-count').innerText = myCardsArray.length;
+    document.getElementById('hand-panel').classList.toggle('active-turn-highlight', gameState.currentTurn === myPlayerId);
 }
 
-function renderTable() {
+function renderTableArenaMat() {
     ['P1', 'P2', 'P3', 'P4'].forEach(p => {
-        const targetSlot = document.getElementById(`slot-${p}`);
-        targetSlot.innerHTML = '';
+        const slotElement = document.getElementById(`mat-card-${p}`);
+        const header = document.querySelector(`#slot-${p} h4`);
+        slotElement.innerHTML = '';
         
-        if (tableCards[p]) {
-            const card = tableCards[p];
+        header.innerText = (p === myPlayerId) ? `${p} (You)` : p;
+
+        if (gameState.tableCards[p]) {
+            let card = gameState.tableCards[p];
             const div = document.createElement('div');
             div.className = `card ${card.color}`;
-            div.innerHTML = `<div class="card-top">${card.value}</div><div class="card-suit">${card.suit}</div><div class="card-bottom">${card.value}</div>`;
-            targetSlot.appendChild(div);
+            div.innerHTML = `<div>${card.value}</div><div class="suit-center">${card.suit}</div><div class="val-bottom">${card.value}</div>`;
+            slotElement.appendChild(div);
+        } else {
+            const dash = document.createElement('div');
+            dash.className = 'card-placeholder';
+            slotElement.appendChild(dash);
         }
     });
-}
-
-function updateUIIndicators(type) {
-    const state = votes[type];
-    const indicator = document.getElementById(`indicator-${type}`);
-    if (!indicator) return;
-
-    // Build visual confirmation layout map tracking network steps
-    indicator.innerText = `P1: ${state.P1?'Ready':'Waiting'} | P2: ${state.P2?'Ready':'Waiting'} | P3: ${state.P3?'Ready':'Waiting'} | P4: ${state.P4?'Ready':'Waiting'}`;
-}
-
-function updateStatus(text) {
-    document.getElementById('status-text').innerText = text;
-}
-
-function hideAllModals() {
-    const steps = document.querySelectorAll('.modal-step');
-    steps.forEach(s => s.style.display = 'none');
-}
-
-/* =========================
-   CHAT INFRASTRUCTURE ROUTER
-========================= */
-function sendChat() {
-    const input = document.getElementById('chat-input');
-    const txt = input.value.trim();
-    if(!txt) return;
-
-    channel.send({
-        type: 'broadcast',
-        event: 'chat',
-        payload: { name: myRole || 'Guest', msg: txt }
-    });
-    addChat(myRole || 'You', txt);
-    input.value = '';
-}
-
-function addChat(sender, txt) {
-    const box = document.getElementById('chat-messages');
-    const msgDiv = document.createElement('div');
-    msgDiv.className = "msg";
-    msgDiv.innerHTML = `<strong style="color:var(--accent-color);">${sender}:</strong> ${txt}`;
-    box.appendChild(msgDiv);
-    box.scrollTop = box.scrollHeight;
 }
 </script>
 </body>
