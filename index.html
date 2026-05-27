@@ -3,13 +3,13 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Online 4-Player Bidding Card Game</title>
+    <title>4-Player Online Card Game with Voice Chat</title>
     <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
     <style>
         :root {
-            --bg-color: #111827;
-            --panel-bg: #1f2937;
-            --accent: #f59e0b;
+            --bg-color: #0f172a;
+            --panel-bg: #1e293b;
+            --accent: #fbbf24;
             --blue: #3b82f6;
             --green: #10b981;
             --red: #ef4444;
@@ -26,6 +26,11 @@
             position: fixed; inset: 0; background: var(--bg-color);
             display: flex; flex-direction: column; justify-content: center; align-items: center;
             gap: 15px; padding: 20px; text-align: center; z-index: 1000;
+        }
+
+        .input-field {
+            padding: 12px; border-radius: 8px; border: 2px solid #475569;
+            background: #334155; color: white; font-size: 16px; width: 250px; text-align: center; margin-bottom: 10px;
         }
 
         .btn {
@@ -71,30 +76,35 @@
             border-radius: 12px; font-size: 12px; font-weight: bold;
         }
 
-        /* Sitting Arrangement Map Matrix Layout: A -> B -> C -> D */
+        #voice-status {
+            text-align: center; font-size: 12px; color: #a1a1aa; margin-top: 4px;
+        }
+
+        /* Sitting order placement matrix configuration: A -> B -> C -> D */
         #table-mat {
             display: grid;
             grid-template-areas: 
-                ". slot-C ."
-                "slot-B . slot-D"
-                ". slot-A .";
+                ". slot-2 ."
+                "slot-1 . slot-3"
+                ". slot-0 .";
             grid-template-columns: 1fr 1fr 1fr;
             gap: 10px; margin: 12px 0;
             background: rgba(0,0,0,0.3); padding: 15px; border-radius: 15px;
-            position: relative;
         }
 
         .mat-node {
             background: rgba(255,255,255,0.05); padding: 8px; border-radius: 10px;
             text-align: center; border: 1px solid rgba(255,255,255,0.1);
         }
-        .mat-node h4 { margin: 0 0 5px 0; font-size: 12px; color: #9ca3af; }
-        .mat-node.active-turn { border: 1px solid var(--accent); background: rgba(245,158,11,0.05); }
+        .mat-node h4 { margin: 0 0 5px 0; font-size: 13px; color: #cbd5e1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .mat-node .turn-dot { font-size: 11px; font-weight: bold; color: var(--accent); display: none; }
+        .mat-node.active-turn { border: 1px solid var(--accent); background: rgba(251,191,36,0.08); }
+        .mat-node.active-turn .turn-dot { display: block; }
 
-        #node-A { grid-area: slot-A; }
-        #node-B { grid-area: slot-B; }
-        #node-C { grid-area: slot-C; }
-        #node-D { grid-area: slot-D; }
+        #node-0 { grid-area: slot-0; }
+        #node-1 { grid-area: slot-1; }
+        #node-2 { grid-area: slot-2; }
+        #node-3 { grid-area: slot-3; }
 
         .card-placeholder {
             width: 65px; height: 95px; border: 2px dashed rgba(255,255,255,0.15);
@@ -120,7 +130,7 @@
         .black { color: #1f2937; }
 
         .modal-view {
-            display: none; background: #1f2937; border: 2px solid var(--accent);
+            display: none; background: #1e293b; border: 2px solid var(--accent);
             border-radius: 12px; padding: 15px; margin: 10px 0; text-align: center;
         }
         .modal-view h3 { margin: 0 0 5px 0; font-size: 16px; }
@@ -130,10 +140,11 @@
 <body>
 
 <div id="lobby-screen">
-    <h2>4-Player Network Table Hub</h2>
-    <p style="color:#9ca3af; font-size: 14px; margin:-5px 0 15px 0;">Team 1 (A+C) &nbsp;vs&nbsp; Team 2 (B+D)</p>
+    <h2>4-Player Team Table Hub</h2>
+    <p style="color:#9ca3af; font-size: 14px; margin:-5px 0 15px 0;">Team 1 (Players 1 & 3) &nbsp;vs&nbsp; Team 2 (Players 2 & 4)</p>
     
-    <div id="lobby-actions">
+    <div id="lobby-setup-form">
+        <input type="text" id="player-name-input" class="input-field" placeholder="Enter Your Real Name" maxlength="12"><br>
         <button id="btn-host" class="btn btn-green" onclick="setupHostRoom()">Host Match Room</button>
         <p id="auto-join-text" style="display:none; color:var(--accent); font-weight:bold;">Processing invite link line parameters...</p>
     </div>
@@ -145,35 +156,36 @@
     
     <div class="panel">
         <div class="score-row">
-            <div>Team 1 (A+C): <span id="ui-score-1">0</span></div>
+            <div>Team 1: <span id="ui-score-1">0</span></div>
             <div id="ui-trump-box" style="visibility: hidden;"><span class="badge">TRUMP: <span id="ui-trump-lbl">HIDDEN</span></span></div>
-            <div>Team 2 (B+D): <span id="ui-score-2">0</span></div>
+            <div>Team 2: <span id="ui-score-2">0</span></div>
         </div>
         <hr style="border:0; border-top:1px solid rgba(255,255,255,0.1); margin:8px 0;">
         <div class="score-row" style="font-size:12px; color:#9ca3af;">
             <div id="ui-match-lbl">Match: 1</div>
             <div id="ui-bid-lbl">Target Bid: None</div>
         </div>
-        <hr style="border:0; border-top:1px solid rgba(255,255,255,0.1); margin:8px 0;">
+        <div id="voice-status">🎙️ Audio Channel Active</div>
+        <hr style="border:0; border-top:1px solid rgba(255,255,255,0.1); margin: 8px 0 4px 0;">
         <p id="status-text" class="status-bar">Synchronizing pipelines...</p>
     </div>
 
     <div id="table-mat">
-        <div class="mat-node" id="node-A"><h4>A (You)</h4><div class="card-placeholder" id="mat-card-A"></div></div>
-        <div class="mat-node" id="node-B"><h4>B</h4><div class="card-placeholder" id="mat-card-B"></div></div>
-        <div class="mat-node" id="node-C"><h4>C</h4><div class="card-placeholder" id="mat-card-C"></div></div>
-        <div class="mat-node" id="node-D"><h4>D</h4><div class="card-placeholder" id="mat-card-D"></div></div>
+        <div class="mat-node" id="node-0"><h4>Player 1</h4><div class="turn-dot">▲ CURRENT TURN</div><div class="card-placeholder" id="mat-card-0"></div></div>
+        <div class="mat-node" id="node-1"><h4>Player 2</h4><div class="turn-dot">▲ CURRENT TURN</div><div class="card-placeholder" id="mat-card-1"></div></div>
+        <div class="mat-node" id="node-2"><h4>Player 3</h4><div class="turn-dot">▲ CURRENT TURN</div><div class="card-placeholder" id="mat-card-2"></div></div>
+        <div class="mat-node" id="node-3"><h4>Player 4</h4><div class="turn-dot">▲ CURRENT TURN</div><div class="card-placeholder" id="mat-card-3"></div></div>
     </div>
 
     <div id="modal-bid-1" class="modal-view">
-        <h3>First Bidding Round</h3>
+        <h3>First Bidding Round (4 Cards)</h3>
         <p id="bid-1-instruction">Bidding sequence moving...</p>
         <div id="bid-1-buttons"></div>
     </div>
 
     <div id="modal-trump-select" class="modal-view">
         <h3>Select Trump Suit</h3>
-        <p>You won the bid! Choose the hidden trump card:</p>
+        <p id="trump-select-instruction">Choose the hidden trump card asset:</p>
         <button class="btn btn-suit" onclick="submitTrumpSuit('♠')">♠ Spades</button>
         <button class="btn btn-suit" onclick="submitTrumpSuit('♣')">♣ Clubs</button>
         <button class="btn btn-suit" onclick="submitTrumpSuit('♥')" style="color:#dc2626;">♥ Hearts</button>
@@ -182,14 +194,14 @@
 
     <div id="modal-bid-2" class="modal-view">
         <h3>Second Bidding Round (8 Cards)</h3>
-        <p>Choose to override trump and steal the lead, or Pass:</p>
+        <p>Choose to override the trump suit to steal lead throw, or pass:</p>
         <button class="btn btn-blue" style="margin:5px;" onclick="submitSecondBid('6')">Single 6</button>
         <button class="btn btn-blue" style="margin:5px;" onclick="submitSecondBid('8')">Single 8</button>
         <button class="btn btn-red" style="margin:5px;" onclick="submitSecondBid('NO')">No</button>
     </div>
 
     <div class="panel" id="hand-panel">
-        <h3 style="margin: 0 0 6px 0; font-size: 14px;"><span id="ui-local-label">Your</span> Hidden Assets (<span id="ui-card-count">0</span> cards)</h3>
+        <h3 style="margin: 0 0 6px 0; font-size: 14px;">Your Hidden Assets (<span id="ui-card-count">0</span> cards)</h3>
         <div id="my-hand" class="hand-flex"></div>
     </div>
 
@@ -197,43 +209,44 @@
 
 <script>
 /* =========================================================================
-   MULTIPLE MOBILE NETWORK ROUTER
+   P2P SYNCED SERVERLESS MULTIPLAYER AND REALTIME VOICE SYSTEM
 ========================================================================= */
 let peer = null;
 let connections = [];
-let myPlayerId = null; // 'A', 'B', 'C', or 'D'
+let localAudioStream = null;
+let myPlayerIndex = null; // 0=A, 1=B, 2=C, 3=D
 let isHost = false;
 
-const orderedPlayers = ['A', 'B', 'C', 'D'];
 const suits = ['♠','♣','♥','♦'];
 const values = ['7','8','9','10','J','Q','K','A'];
 const cardsPower = { '7':7, '8':8, '9':9, '10':10, 'J':11, 'Q':12, 'K':13, 'A':14 };
 
-// Synchronized State Model mirroring the strict rule document
+// Absolute Sitting Sequence Engine Map Rules
+const basePlayers = ['A', 'B', 'C', 'D'];
+
 let gameState = {
     matchNumber: 1,
-    opportunityPlayer: 'A',
+    opportunityIndex: 0, // 0=A, 1=B, 2=C, 3=D
     phase: 'LOBBY', // 'BID_1', 'TRUMP_SELECT', 'BID_2', 'PLAYING', 'END'
-    hands: { A:[], B:[], C:[], D:[] },
-    tableCards: { A:null, B:null, C:null, D:null },
+    names: ["Player 1", "Player 2", "Player 3", "Player 4"],
+    hands: [[], [], [], []], // Index aligned indices arrays
+    tableCards: [null, null, null, null],
     trumpSuit: null,
     trumpRevealed: false,
     
-    // Bidding state records
-    bid1Tracker: [], // list of {player, choice}
-    highestBidder: null,
+    bid1Tracker: [], // list of {idx, choice}
+    highestBidderIndex: null,
     highestBidValue: 0,
     
-    bid2Tracker: [], // list of {player, choice}
-    finalTrumpSelector: null,
+    bid2Tracker: [], // list of {idx, choice}
+    phase2OverrideTriggered: false,
     
-    currentTurn: null,
-    leadPlayer: null,
+    currentTurnIndex: null,
+    leadPlayerIndex: null,
     roundTrickCount: 0,
     
-    scoreTeam1: 0, // A+C Match points
-    scoreTeam2: 0, // B+D Match points
-    
+    scoreTeam1: 0, 
+    scoreTeam2: 0,
     deckRemaining: []
 };
 
@@ -241,27 +254,50 @@ window.addEventListener('DOMContentLoaded', () => {
     const params = new URLSearchParams(window.location.search);
     const room = params.get('room');
     if (room) {
-        document.getElementById('btn-host').style.display = 'none';
-        document.getElementById('auto-join-text').style.display = 'block';
-        setupJoinRoom(room);
+        document.getElementById('lobby-setup-form').innerHTML = `
+            <input type="text" id="player-name-input" class="input-field" placeholder="Enter Your Real Name" maxlength="12"><br>
+            <button class="btn btn-blue" onclick="setupJoinRoom('${room}')">Join Match Room</button>
+        `;
     }
 });
 
+function getLocalName() {
+    let name = document.getElementById('player-name-input').value.trim();
+    return name ? name : "Player " + (myPlayerIndex !== null ? myPlayerIndex + 1 : "");
+}
+
+async function startMicrophonePipeline() {
+    try {
+        localAudioStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+        document.getElementById('voice-status').innerText = "🎙️ Voice Audio Pipeline Activated";
+    } catch (err) {
+        console.warn("Microphone access denied or error:", err);
+        document.getElementById('voice-status').innerText = "🔇 Voice Connection Active (Muted/No Mic)";
+    }
+}
+
 function setupHostRoom() {
     isHost = true;
-    myPlayerId = 'A';
-    document.getElementById('lobby-actions').style.display = 'none';
+    myPlayerIndex = 0;
+    gameState.names[0] = getLocalName();
+    document.getElementById('lobby-setup-form').style.display = 'none';
     document.getElementById('lobby-status-lbl').innerText = "Registering room network protocols...";
 
     peer = new Peer();
-    peer.on('open', (id) => {
+    peer.on('open', async (id) => {
+        await startMicrophonePipeline();
         const link = `${window.location.origin}${window.location.pathname}?room=${id}`;
         document.getElementById('lobby-status-lbl').innerHTML = `
             <p style='color:white; font-size:14px; margin-bottom:5px;'>Share this link with the other 3 players:</p>
             <div class='link-box' id='invite-link' onclick='copyLinkText("${link}")'>${link}</div>
-            <p style='color:#9ca3af; font-size:11px; margin-top:-5px;'>Click box to copy automatically</p>
             <h3 id='conn-counter' style='color:var(--accent); margin-top:15px;'>Players Connected: 1 / 4</h3>
         `;
+    });
+
+    // Voice loop calling handler interceptor
+    peer.on('call', (call) => {
+        call.answer(localAudioStream);
+        call.on('stream', (remoteStream) => playRemoteVoiceStream(remoteStream));
     });
 
     peer.on('connection', (conn) => {
@@ -269,32 +305,52 @@ function setupHostRoom() {
             conn.on('open', () => conn.send({ type: 'FULL' }));
             return;
         }
-        let assignedId = orderedPlayers[connections.length + 1]; // B, C, then D
-        connections.push({ conn: conn, playerId: assignedId });
+        let assignedIndex = connections.length + 1; // 1, 2, or 3
+        connections.push({ conn: conn, index: assignedIndex });
 
         conn.on('open', () => {
-            conn.send({ type: 'ASSIGN', playerId: assignedId });
+            conn.send({ type: 'ASSIGN', index: assignedIndex });
             document.getElementById('conn-counter').innerText = `Players Connected: ${connections.length + 1} / 4`;
-            if (connections.length === 3) {
-                setTimeout(runNewMatchEngine, 1000);
-            }
         });
 
-        conn.on('data', (data) => parseIncomingTraffic(data, assignedId));
-        conn.on('close', () => { alert("Player disconnected. Match closed."); window.location.search=""; });
+        conn.on('data', (data) => parseIncomingTraffic(data, assignedIndex));
+        conn.on('close', () => { alert("Connection lost. Resetting layout loop."); window.location.search=""; });
     });
 }
 
-function setupJoinRoom(roomId) {
-    isHost = false;
-    document.getElementById('lobby-status-lbl').innerText = "Connecting to game matrix layout...";
+async function setupJoinRoom(roomId) {
+    gameState.names[0] = "Host"; // Placeholder until sync
+    document.getElementById('lobby-status-lbl').innerText = "Connecting to peer game table...";
+    await startMicrophonePipeline();
+    
     peer = new Peer();
     peer.on('open', () => {
         let conn = peer.connect(roomId);
         connections = [conn];
         conn.on('data', (data) => parseIncomingTraffic(data, null));
-        conn.on('close', () => { alert("Host room dropped connection."); window.location.href = window.location.pathname; });
+        conn.on('close', () => { alert("Host disconnected."); window.location.href = window.location.pathname; });
     });
+
+    peer.on('call', (call) => {
+        call.answer(localAudioStream);
+        call.on('stream', (remoteStream) => playRemoteVoiceStream(remoteStream));
+    });
+}
+
+function triggerVoiceMeshNetwork() {
+    // If client is a player, connect voice streams directly across active endpoints
+    if (localAudioStream) {
+        connections.forEach(c => {
+            peer.call(c.conn.peer, localAudioStream);
+        });
+    }
+}
+
+function playRemoteVoiceStream(stream) {
+    let audio = document.createElement('audio');
+    audio.srcObject = stream;
+    audio.autoplay = true;
+    document.body.appendChild(audio);
 }
 
 function copyLinkText(str) {
@@ -311,17 +367,18 @@ function emitGameState() {
 }
 
 function transmitToHost(payload) {
-    if (isHost) parseIncomingTraffic(payload, 'A');
+    if (isHost) parseIncomingTraffic(payload, 0);
     else if (connections[0]) connections[0].send(payload);
 }
 
-function parseIncomingTraffic(msg, sender) {
+function parseIncomingTraffic(msg, senderIndex) {
     if (msg.type === 'ASSIGN') {
-        myPlayerId = msg.playerId;
-        document.getElementById('lobby-status-lbl').innerHTML = `<h3>Connected. Slot ID: <span style='color:var(--accent)'>${myPlayerId}</span></h3><p>Waiting for remaining players...</p>`;
+        myPlayerIndex = msg.index;
+        document.getElementById('lobby-status-lbl').innerHTML = `<h3>Connected. Initializing asset streaming...</h3>`;
+        transmitToHost({ type: 'JOIN_NAME', name: getLocalName() });
     }
     else if (msg.type === 'FULL') {
-        alert("Lobby full.");
+        alert("Lobby layout already full.");
         window.location.href = window.location.pathname;
     }
     else if (msg.type === 'SYNC') {
@@ -329,22 +386,27 @@ function parseIncomingTraffic(msg, sender) {
         renderUIFromState();
     }
     else if (isHost) {
-        if (msg.type === 'ACTION_BID1') recordBid1Selection(sender, msg.choice);
+        if (msg.type === 'JOIN_NAME') {
+            gameState.names[senderIndex] = msg.name;
+            if (Object.keys(gameState.names).filter(n => gameState.names[n]).length === 4 || connections.length === 3) {
+                // All names received. Trigger match loop execution.
+                triggerVoiceMeshNetwork();
+                setTimeout(runNewMatchEngine, 1000);
+            }
+        }
+        if (msg.type === 'ACTION_BID1') recordBid1Selection(senderIndex, msg.choice);
         if (msg.type === 'ACTION_TRUMP') recordTrumpSuitSelection(msg.suit);
-        if (msg.type === 'ACTION_BID2') recordBid2Selection(sender, msg.choice);
-        if (msg.type === 'ACTION_PLAY') recordCardThrowAction(sender, msg.cardIndex);
+        if (msg.type === 'ACTION_BID2') recordBid2Selection(senderIndex, msg.choice);
+        if (msg.type === 'ACTION_PLAY') recordCardThrowAction(senderIndex, msg.cardIndex);
     }
 }
 
 /* =========================================================================
-   STRICT SYSTEM RULES MATCH LOGIC PIPELINE
+   STRICT SYSTEM RULES MATCH LOGIC PIPELINE WITH INTEGRATED CORRECTIONS
 ========================================================================= */
 function runNewMatchEngine() {
-    // Determine strict opportunity player assignment order sequence rule
-    let opps = ['A', 'B', 'C', 'D'];
-    gameState.opportunityPlayer = opps[(gameState.matchNumber - 1) % 4];
+    gameState.opportunityIndex = (gameState.matchNumber - 1) % 4;
     
-    // Generate and shuffle standard short 32-card asset deck
     let deck = [];
     suits.forEach(s => values.forEach(v => deck.push({ value:v, suit:s, color:(s==='♥'||s==='♦')?'red':'black' })));
     for (let i = deck.length - 1; i > 0; i--) {
@@ -352,62 +414,57 @@ function runNewMatchEngine() {
         [deck[i], deck[j]] = [deck[j], deck[i]];
     }
 
-    // Step 1: Give first 4 cards to everyone
-    orderedPlayers.forEach(p => gameState.hands[p] = deck.splice(0, 4));
+    // Step 1: Give first 4 cards
+    for (let i=0; i<4; i++) {
+        gameState.hands[i] = deck.splice(0, 4);
+    }
     gameState.deckRemaining = deck;
     
-    gameState.tableCards = { A:null, B:null, C:null, D:null };
+    gameState.tableCards = [null, null, null, null];
     gameState.bid1Tracker = [];
     gameState.bid2Tracker = [];
     gameState.trumpSuit = null;
     gameState.trumpRevealed = false;
     gameState.roundTrickCount = 0;
+    gameState.phase2OverrideTriggered = false;
     
-    // Bidding starts directly from opportunity player
     gameState.phase = 'BID_1';
-    gameState.currentTurn = gameState.opportunityPlayer;
+    gameState.currentTurnIndex = gameState.opportunityIndex;
     
     emitGameState();
 }
 
-function recordBid1Selection(player, choice) {
-    if (gameState.currentTurn !== player || gameState.phase !== 'BID_1') return;
-    gameState.bid1Tracker.push({ player: player, choice: choice });
-
-    // Step to next clockwise player sitting order sequence
-    let currentIdx = orderedPlayers.indexOf(player);
-    let nextPlayer = orderedPlayers[(currentIdx + 1) % 4];
+function recordBid1Selection(idx, choice) {
+    if (gameState.currentTurnIndex !== idx || gameState.phase !== 'BID_1') return;
+    gameState.bid1Tracker.push({ idx: idx, choice: choice });
 
     if (gameState.bid1Tracker.length === 4) {
-        // Evaluate First Bid Winner Rule
         let highestValue = 0;
-        let winner = null;
+        let winnerIdx = gameState.opportunityIndex;
 
-        // Bidding sequence flow loop starting at opportunity player
-        let orderIdx = orderedPlayers.indexOf(gameState.opportunityPlayer);
+        // Build priority tracking sequence index starting directly from opportunity location
         let evalSequence = [];
         for (let i=0; i<4; i++) {
-            evalSequence.push(orderedPlayers[(orderIdx + i) % 4]);
+            evalSequence.push((gameState.opportunityIndex + i) % 4);
         }
 
-        evalSequence.forEach(p => {
-            let pBid = gameState.bid1Tracker.find(b => b.player === p).choice;
+        evalSequence.forEach(pIdx => {
+            let pBid = gameState.bid1Tracker.find(b => b.idx === pIdx).choice;
             if (pBid !== 'NO') {
                 let val = parseInt(pBid);
-                // Rule 1 & Rule 2: Highest bid wins. Tie goes to closest player after opportunity player
                 if (val > highestValue) {
                     highestValue = val;
-                    winner = p;
+                    winnerIdx = pIdx;
                 }
             }
         });
 
-        gameState.highestBidder = winner;
+        gameState.highestBidderIndex = winnerIdx;
         gameState.highestBidValue = highestValue;
         gameState.phase = 'TRUMP_SELECT';
-        gameState.currentTurn = winner;
+        gameState.currentTurnIndex = winnerIdx;
     } else {
-        gameState.currentTurn = nextPlayer;
+        gameState.currentTurnIndex = (idx + 1) % 4;
     }
     emitGameState();
 }
@@ -415,174 +472,143 @@ function recordBid1Selection(player, choice) {
 function recordTrumpSuitSelection(suit) {
     gameState.trumpSuit = suit;
     
-    // Step 2: Give remaining 4 cards after trump selection
-    orderedPlayers.forEach(p => {
-        gameState.hands[p] = gameState.hands[p].concat(gameState.deckRemaining.splice(0, 4));
-    });
-
-    // Launch Second Bidding round
-    gameState.phase = 'BID_2';
-    // Bidding loop starting from opportunity player order
-    gameState.currentTurn = gameState.opportunityPlayer;
+    if (!gameState.phase2OverrideTriggered) {
+        // Normal Flow: Deal remaining 4 cards right after step 1 trump selection
+        for (let i=0; i<4; i++) {
+            gameState.hands[i] = gameState.hands[i].concat(gameState.deckRemaining.splice(0, 4));
+        }
+        gameState.phase = 'BID_2';
+        gameState.currentTurnIndex = gameState.opportunityIndex;
+    } else {
+        // Handled via Single 6/8 Override Route Rule context
+        gameState.phase = 'PLAYING';
+        gameState.leadPlayerIndex = gameState.highestBidderIndex;
+        gameState.currentTurnIndex = gameState.highestBidderIndex;
+    }
     emitGameState();
 }
 
-function recordBid2Selection(player, choice) {
-    if (gameState.currentTurn !== player || gameState.phase !== 'BID_2') return;
-    gameState.bid2Tracker.push({ player: player, choice: choice });
-
-    let currentIdx = orderedPlayers.indexOf(player);
-    let nextPlayer = orderedPlayers[(currentIdx + 1) % 4];
+function recordBid2Selection(idx, choice) {
+    if (gameState.currentTurnIndex !== idx || gameState.phase !== 'BID_2') return;
+    gameState.bid2Tracker.push({ idx: idx, choice: choice });
 
     if (gameState.bid2Tracker.length === 4) {
-        // Evaluate Second Bid override logic rules
-        let overrideBidder = null;
+        let overrideBidderIdx = null;
         let overrideVal = 0;
 
-        // Check in sequential order starting from opportunity player
-        let orderIdx = orderedPlayers.indexOf(gameState.opportunityPlayer);
-        for(let i=0; i<4; i++) {
-            let p = orderedPlayers[(orderIdx + i) % 4];
-            let pChoice = gameState.bid2Tracker.find(b => b.player === p).choice;
+        for (let i=0; i<4; i++) {
+            let pIdx = (gameState.opportunityIndex + i) % 4;
+            let pChoice = gameState.bid2Tracker.find(b => b.idx === pIdx).choice;
             if (pChoice !== 'NO') {
                 let val = parseInt(pChoice);
                 if (val > overrideVal) {
                     overrideVal = val;
-                    overrideBidder = p;
+                    overrideBidderIdx = pIdx;
                 }
             }
         }
 
-        if (overrideBidder) {
-            // That player becomes new trump selector and throws first card
-            gameState.highestBidder = overrideBidder;
+        if (overrideBidderIdx) {
+            // FIXED RULE: That player becomes new trump selector!
+            gameState.highestBidderIndex = overrideBidderIdx;
             gameState.highestBidValue = overrideVal;
-            gameState.finalTrumpSelector = overrideBidder;
-            gameState.phase = 'PLAYING';
-            gameState.leadPlayer = overrideBidder;
-            gameState.currentTurn = overrideBidder;
+            gameState.phase2OverrideTriggered = true;
+            
+            // Send back into Trump Selection modal window state to pick new suit with 8 cards
+            gameState.phase = 'TRUMP_SELECT';
+            gameState.currentTurnIndex = overrideBidderIdx;
         } else {
-            // Everyone selected NO: Old trump remains, next player after old trump selector starts first throw
-            gameState.finalTrumpSelector = gameState.highestBidder;
-            let originalSelectorIdx = orderedPlayers.indexOf(gameState.highestBidder);
-            let nextThrower = orderedPlayers[(originalSelectorIdx + 1) % 4];
+            // FIXED RULE: Everyone says No -> Old trump remains, next player after original trump selector starts throw
+            let originalSelectorIdx = gameState.highestBidderIndex;
+            let nextThrowerIdx = (originalSelectorIdx + 1) % 4;
+            
             gameState.phase = 'PLAYING';
-            gameState.leadPlayer = nextThrower;
-            gameState.currentTurn = nextThrower;
+            gameState.leadPlayerIndex = nextThrowerIdx;
+            gameState.currentTurnIndex = nextThrowerIdx;
         }
-        buildRoundTurnSequence(gameState.leadPlayer);
     } else {
-        gameState.currentTurn = nextPlayer;
+        gameState.currentTurnIndex = (idx + 1) % 4;
     }
     emitGameState();
 }
 
-function buildRoundTurnSequence(startPlayer) {
-    let idx = orderedPlayers.indexOf(startPlayer);
-    gameState.turnOrder = [];
-    for (let i = 0; i < 4; i++) {
-        gameState.turnOrder.push(orderedPlayers[(idx + i) % 4]);
-    }
-}
+function recordCardThrowAction(idx, cardIdx) {
+    if (gameState.currentTurnIndex !== idx || gameState.phase !== 'PLAYING') return;
 
-function recordCardThrowAction(player, idx) {
-    if (gameState.currentTurn !== player || gameState.phase !== 'PLAYING') return;
+    let card = gameState.hands[idx].splice(cardIdx, 1)[0];
+    gameState.tableCards[idx] = card;
 
-    let card = gameState.hands[player].splice(idx, 1)[0];
-    gameState.tableCards[player] = card;
+    if (!gameState.trumpRevealed) gameState.trumpRevealed = true;
 
-    // Trump card is hidden at start. Reveals only after first throw.
-    if (!gameState.trumpRevealed) {
-        gameState.trumpRevealed = true;
-    }
-
-    let playedCount = Object.values(gameState.tableCards).filter(c => c !== null).length;
+    let playedCount = gameState.tableCards.filter(c => c !== null).length;
 
     if (playedCount === 4) {
-        gameState.currentTurn = null; // freeze operations for evaluation sync display delay
+        gameState.currentTurnIndex = null;
         emitGameState();
         setTimeout(evaluateTrickWinnerAndScores, 1500);
     } else {
-        let currentIdx = gameState.turnOrder.indexOf(player);
-        gameState.currentTurn = gameState.turnOrder[(currentIdx + 1) % 4];
+        // Move turn to the exact next clockwise player sitting order sequence
+        gameState.currentTurnIndex = (idx + 1) % 4;
         emitGameState();
     }
 }
 
 function evaluateTrickWinnerAndScores() {
-    let ledSuit = gameState.tableCards[gameState.leadPlayer].suit;
+    let ledSuit = gameState.tableCards[gameState.leadPlayerIndex].suit;
     let highPower = -1;
-    let trickWinner = gameState.leadPlayer;
+    let trickWinnerIdx = gameState.leadPlayerIndex;
 
-    orderedPlayers.forEach(p => {
-        let card = gameState.tableCards[p];
+    for (let i=0; i<4; i++) {
+        let card = gameState.tableCards[i];
         let power = cardsPower[card.value];
 
-        if (card.suit === gameState.trumpSuit) power += 100; // Trump priority rule modifier
-        else if (card.suit !== ledSuit) power = -1; // Disqualified if failing to follow suit
+        if (card.suit === gameState.trumpSuit) power += 100;
+        else if (card.suit !== ledSuit) power = -1;
 
         if (power > highPower) {
             highPower = power;
-            trickWinner = p;
+            trickWinnerIdx = i;
         }
-    });
+    }
 
-    // Point Rule: Match point assignment loops
-    if (trickWinner === 'A' || trickWinner === 'C') gameState.scoreTeam1++;
-    if (trickWinner === 'B' || trickWinner === 'D') gameState.scoreTeam2++;
+    if (trickWinnerIdx === 0 || trickWinnerIdx === 2) gameState.scoreTeam1++;
+    if (trickWinnerIdx === 1 || trickWinnerIdx === 3) gameState.scoreTeam2++;
 
-    // Clear Mat Arena Slots
-    orderedPlayers.forEach(p => gameState.tableCards[p] = null);
+    for(let i=0; i<4; i++) gameState.tableCards[i] = null;
     gameState.roundTrickCount++;
 
     if (gameState.roundTrickCount === 8) {
-        // End of match calculation rules
         let targetBid = gameState.highestBidValue;
-        let bidder = gameState.highestBidder;
-        let bidderTeam = (bidder === 'A' || bidder === 'C') ? 1 : 2;
+        let bidderTeam = (gameState.highestBidderIndex === 0 || gameState.highestBidderIndex === 2) ? 1 : 2;
         let pointsWon = (bidderTeam === 1) ? gameState.scoreTeam1 : gameState.scoreTeam2;
 
-        let matchWinnerText = "";
+        let matchResultText = "";
         if (pointsWon >= targetBid) {
-            matchWinnerText = `Team ${bidderTeam} successfully reached their bid target of ${targetBid} and WON Match ${gameState.matchNumber}!`;
+            matchResultText = `Match ${gameState.matchNumber} Over: Team ${bidderTeam} reached target bid of ${targetBid} points and WON!`;
         } else {
             let opposingTeam = (bidderTeam === 1) ? 2 : 1;
-            matchWinnerText = `Team ${bidderTeam} failed the bid target. Team ${opposingTeam} WINS Match ${gameState.matchNumber}!`;
+            matchResultText = `Match ${gameState.matchNumber} Over: Team ${bidderTeam} failed bid. Team ${opposingTeam} WINS!`;
         }
 
-        alert(matchWinnerText);
-        
-        // Loop match indices automatically
+        alert(matchResultText);
         gameState.matchNumber++;
         gameState.phase = 'END';
         emitGameState();
-        
-        // Trigger next auto restart
         setTimeout(runNewMatchEngine, 2000);
     } else {
-        // Winner starts next round
-        gameState.leadPlayer = trickWinner;
-        gameState.currentTurn = trickWinner;
-        buildRoundTurnSequence(trickWinner);
+        gameState.leadPlayerIndex = trickWinnerIdx;
+        gameState.currentTurnIndex = trickWinnerIdx;
         emitGameState();
     }
 }
 
 /* =========================================================================
-   UI DISPLAY RECONSTRUCTION SYNC LAYER
+   UI DISPLAY RECONSTRUCTION SYNC LAYER WITH SITTING ROTATIONS
 ========================================================================= */
-function submitFirstRoundBid(choice) {
-    transmitToHost({ type: 'ACTION_BID1', choice: choice });
-}
-function submitTrumpSuit(suit) {
-    transmitToHost({ type: 'ACTION_TRUMP', suit: suit });
-}
-function submitSecondBid(choice) {
-    transmitToHost({ type: 'ACTION_BID2', choice: choice });
-}
-function throwLocalCard(idx) {
-    transmitToHost({ type: 'ACTION_PLAY', cardIndex: idx });
-}
+function submitFirstRoundBid(choice) { transmitToHost({ type: 'ACTION_BID1', choice: choice }); }
+function submitTrumpSuit(suit) { transmitToHost({ type: 'ACTION_TRUMP', suit: suit }); }
+function submitSecondBid(choice) { transmitToHost({ type: 'ACTION_BID2', choice: choice }); }
+function throwLocalCard(idx) { transmitToHost({ type: 'ACTION_PLAY', cardIndex: idx }); }
 
 function renderUIFromState() {
     document.getElementById('lobby-screen').style.display = 'none';
@@ -590,10 +616,11 @@ function renderUIFromState() {
 
     document.getElementById('ui-score-1').innerText = gameState.scoreTeam1;
     document.getElementById('ui-score-2').innerText = gameState.scoreTeam2;
-    document.getElementById('ui-match-lbl').innerText = `Match: ${gameState.matchNumber} (Opportunity: ${gameState.opportunityPlayer})`;
-    document.getElementById('ui-bid-lbl').innerText = gameState.highestBidder ? `Target Bid: ${gameState.highestBidValue} points by ${gameState.highestBidder}` : `Target Bid: None`;
+    document.getElementById('ui-match-lbl').innerText = `Match: ${gameState.matchNumber} (Opportunity Player: ${gameState.names[gameState.opportunityIndex]})`;
+    
+    document.getElementById('ui-bid-lbl').innerText = gameState.highestBidderIndex !== null ? 
+        `Target Bid: ${gameState.highestBidValue} points set by ${gameState.names[gameState.highestBidderIndex]}` : `Target Bid: None`;
 
-    // Manage Trump badge visibility element mapping
     const trumpBox = document.getElementById('ui-trump-box');
     const trumpLbl = document.getElementById('ui-trump-lbl');
     if (gameState.trumpSuit) {
@@ -603,41 +630,42 @@ function renderUIFromState() {
         trumpBox.style.visibility = "hidden";
     }
 
-    // Toggle dialog views
     document.getElementById('modal-bid-1').style.display = 'none';
     document.getElementById('modal-trump-select').style.display = 'none';
     document.getElementById('modal-bid-2').style.display = 'none';
 
     let displayMsg = "";
+    let activeTurnPlayerName = gameState.names[gameState.currentTurnIndex];
 
     if (gameState.phase === 'BID_1') {
-        displayMsg = `First Bidding: Turn belongs to Player ${gameState.currentTurn}...`;
-        if (myPlayerId === gameState.currentTurn) {
+        displayMsg = `First Bidding: Turn belongs to ${activeTurnPlayerName}...`;
+        if (myPlayerIndex === gameState.currentTurnIndex) {
             document.getElementById('modal-bid-1').style.display = 'block';
             setupBid1ButtonsHTML();
         }
     } 
     else if (gameState.phase === 'TRUMP_SELECT') {
-        displayMsg = `Trump Selection: Waiting for ${gameState.currentTurn} to choose suit...`;
-        if (myPlayerId === gameState.currentTurn) {
+        displayMsg = `Trump Selection: Waiting for ${activeTurnPlayerName} to choose suit...`;
+        if (myPlayerIndex === gameState.currentTurnIndex) {
             document.getElementById('modal-trump-select').style.display = 'block';
+            if(gameState.phase2OverrideTriggered) {
+                document.getElementById('trump-select-instruction').innerText = "You triggered a Single Override! Pick the new game Trump suit asset:";
+            } else {
+                document.getElementById('trump-select-instruction').innerText = "You won the 4-card round bid! Choose hidden trump:";
+            }
         }
     } 
     else if (gameState.phase === 'BID_2') {
-        displayMsg = `Second Bidding: Turn belongs to Player ${gameState.currentTurn}...`;
-        if (myPlayerId === gameState.currentTurn) {
+        displayMsg = `8-Card Bidding: Turn belongs to ${activeTurnPlayerName}...`;
+        if (myPlayerIndex === gameState.currentTurnIndex) {
             document.getElementById('modal-bid-2').style.display = 'block';
         }
     } 
     else if (gameState.phase === 'PLAYING') {
-        displayMsg = (gameState.currentTurn === myPlayerId) ? "Your turn! Throw an asset card." : `Throw Sequence Order: Waiting for Player ${gameState.currentTurn}...`;
-    }
-    else if (gameState.phase === 'END') {
-        displayMsg = `Match concluded. Syncing next deck asset loop deal...`;
+        displayMsg = (myPlayerIndex === gameState.currentTurnIndex) ? "YOUR TURN! Throw a card." : `Waiting for ${activeTurnPlayerName} to play card...`;
     }
 
-    document.getElementById('status-text').innerText = `[Slot ${myPlayerId}] — ${displayMsg}`;
-    
+    document.getElementById('status-text').innerText = displayMsg;
     renderLocalHandMatrix();
     renderMatPositions();
 }
@@ -645,16 +673,14 @@ function renderUIFromState() {
 function setupBid1ButtonsHTML() {
     const container = document.getElementById('bid-1-buttons');
     const instruction = document.getElementById('bid-1-instruction');
-    container.innerHTML = '';
-
-    if (myPlayerId === gameState.opportunityPlayer) {
-        instruction.innerText = "You are the Opportunity Player. You must place a bid.";
+    if (myPlayerIndex === gameState.opportunityIndex) {
+        instruction.innerText = "You are the Opportunity Player. You must open with a bid value:";
         container.innerHTML = `
             <button class="btn btn-blue" style="margin:5px;" onclick="submitFirstRoundBid('5')">Bid 5</button>
             <button class="btn btn-blue" style="margin:5px;" onclick="submitFirstRoundBid('6')">Bid 6</button>
         `;
     } else {
-        instruction.innerText = "Choose your bidding asset margin or Pass:";
+        instruction.innerText = "Choose to overbid or pass:";
         container.innerHTML = `
             <button class="btn btn-blue" style="margin:5px;" onclick="submitFirstRoundBid('6')">Bid 6</button>
             <button class="btn btn-red" style="margin:5px;" onclick="submitFirstRoundBid('NO')">No Bid</button>
@@ -665,23 +691,18 @@ function setupBid1ButtonsHTML() {
 function renderLocalHandMatrix() {
     const container = document.getElementById('my-hand');
     container.innerHTML = '';
-    
-    document.getElementById('ui-local-label').innerText = `${myPlayerId} (You)`;
 
-    let myHandCards = gameState.hands[myPlayerId] || [];
+    let myHandCards = gameState.hands[myPlayerIndex] || [];
     myHandCards.forEach((card, index) => {
         const div = document.createElement('div');
         div.className = `card ${card.color}`;
         
-        // Follow Suit Rule validation check
-        let isDisabled = (gameState.phase !== 'PLAYING' || myPlayerId !== gameState.currentTurn);
+        let isDisabled = (gameState.phase !== 'PLAYING' || myPlayerIndex !== gameState.currentTurnIndex);
         
-        if (!isDisabled && myPlayerId !== gameState.leadPlayer && gameState.tableCards[gameState.leadPlayer]) {
-            let ledSuit = gameState.tableCards[gameState.leadPlayer].suit;
+        if (!isDisabled && myPlayerIndex !== gameState.leadPlayerIndex && gameState.tableCards[gameState.leadPlayerIndex]) {
+            let ledSuit = gameState.tableCards[gameState.leadPlayerIndex].suit;
             let hasSuit = myHandCards.some(c => c.suit === ledSuit);
-            if (hasSuit && card.suit !== ledSuit) {
-                isDisabled = true; // visually lock card if violating follow-suit rule
-            }
+            if (hasSuit && card.suit !== ledSuit) isDisabled = true;
         }
 
         if (isDisabled) div.classList.add('disabled');
@@ -694,24 +715,25 @@ function renderLocalHandMatrix() {
         div.onclick = () => { if (!isDisabled) throwLocalCard(index); };
         container.appendChild(div);
     });
-
     document.getElementById('ui-card-count').innerText = myHandCards.length;
 }
 
 function renderMatPositions() {
-    orderedPlayers.forEach(p => {
-        const node = document.getElementById(`node-${p}`);
-        const slot = document.getElementById(`mat-card-${p}`);
+    // Dynamic Rotation Engine mapping layout: your layout is slot-0, next clockwise are slot-1, 2, 3
+    for (let i = 0; i < 4; i++) {
+        let logicalIndex = (myPlayerIndex + i) % 4; 
+        
+        const node = document.getElementById(`node-${i}`);
+        const slot = document.getElementById(`mat-card-${i}`);
         const header = node.querySelector('h4');
         
         slot.innerHTML = '';
-        header.innerText = (p === myPlayerId) ? `${p} (You)` : p;
+        header.innerText = (logicalIndex === myPlayerIndex) ? `${gameState.names[logicalIndex]} (You)` : gameState.names[logicalIndex];
         
-        // Highlight active thrower border
-        node.classList.toggle('active-turn', gameState.phase === 'PLAYING' && gameState.currentTurn === p);
+        node.classList.toggle('active-turn', gameState.phase === 'PLAYING' && gameState.currentTurnIndex === logicalIndex);
 
-        if (gameState.tableCards[p]) {
-            let card = gameState.tableCards[p];
+        if (gameState.tableCards[logicalIndex]) {
+            let card = gameState.tableCards[logicalIndex];
             const div = document.createElement('div');
             div.className = `card ${card.color}`;
             div.innerHTML = `<div>${card.value}</div><div class="suit-mid">${card.suit}</div><div class="val-inv">${card.value}</div>`;
@@ -721,7 +743,7 @@ function renderMatPositions() {
             dash.className = 'card-placeholder';
             slot.appendChild(dash);
         }
-    });
+    }
 }
 </script>
 </body>
